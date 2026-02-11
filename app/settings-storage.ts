@@ -37,13 +37,15 @@ export function saveSettings(settings: Settings): void {
 
 // ── Helpers ──
 
-/** Convert minutes-from-midnight to "H:MM am/pm" display string */
+/** Convert minutes-from-midnight to a display string using the system hour format */
 export function formatBedTime(minutes: number): string {
-  // Normalize to 0–1439
+  // Build a Date at the given time today so Intl picks up the system locale
   const m = ((minutes % 1440) + 1440) % 1440;
-  const hours24 = Math.floor(m / 60);
-  const mins = m % 60;
-  const period = hours24 >= 12 ? "pm" : "am";
-  const hours12 = hours24 === 0 ? 12 : hours24 > 12 ? hours24 - 12 : hours24;
-  return `${hours12}:${String(mins).padStart(2, "0")} ${period}`;
+  const d = new Date();
+  d.setHours(Math.floor(m / 60), m % 60, 0, 0);
+  // undefined locale = system default → respects 12h / 24h device setting
+  return d.toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }

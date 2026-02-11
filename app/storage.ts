@@ -231,3 +231,13 @@ export function getAllDays(): DayEntry[] {
   const data = readData();
   return data.days;
 }
+
+/** Get the earliest logged date string ("YYYY-MM-DD"), or null if no data */
+export function getFirstLogDate(): string | null {
+  const data = readData();
+  if (data.days.length === 0) return null;
+  return data.days.reduce((earliest, d) =>
+    d.date < earliest ? d.date : earliest,
+    data.days[0].date,
+  );
+}

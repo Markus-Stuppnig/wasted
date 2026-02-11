@@ -11,7 +11,8 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle } from "react-native-svg";
-import { getDayMinutes, loadToday } from "../storage";
+import { Ionicons } from "@expo/vector-icons";
+import { getDayMinutes, loadToday, getFirstLogDate } from "../storage";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -52,6 +53,21 @@ const MONTH_NAMES = [
   "Dec",
 ];
 
+const MONTH_NAMES_FULL = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
 const DAY_NAMES = [
   "Sunday",
   "Monday",
@@ -70,9 +86,10 @@ interface DayCircleProps {
   isToday: boolean;
   isFuture: boolean;
   isCurrentMonth: boolean;
+  isSelected: boolean;
 }
 
-function DayCircle({ size, minutes, isToday, isFuture, isCurrentMonth }: DayCircleProps) {
+function DayCircle({ size, minutes, isToday, isFuture, isCurrentMonth, isSelected }: DayCircleProps) {
   const strokeWidth = size * 0.12;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
@@ -83,15 +100,83 @@ function DayCircle({ size, minutes, isToday, isFuture, isCurrentMonth }: DayCirc
   // Colors
   const trackColor = isCurrentMonth
     ? "rgba(255,255,255,0.12)"
-    : "rgba(255,255,255,0.05)";
-  const progressColor = "#e8602c"; // warm orange-red from screenshot
+    : "rgba(255,255,255,0.04)";
+  const progressColor = "#e8602c"; // warm orange-red
   const filledBg =
     minutes > 0 && !isFuture
       ? "rgba(255,255,255,0.08)"
       : "transparent";
 
-  if (isFuture) {
-    // Future days: just a faint outline circle
+  // Selected ring
+  const selectedBorderWidth = 2;
+  const selectedPadding = 3;
+
+  const circle = (() => {
+    if (!isCurrentMonth) {
+      // Out-of-month days: very faint, smaller dot
+      return (
+        <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
+          <View
+            style={{
+              width: size * 0.45,
+              height: size * 0.45,
+              borderRadius: size * 0.225,
+              backgroundColor: "rgba(255,255,255,0.08)",
+            }}
+          />
+        </View>
+      );
+    }
+
+    if (isFuture) {
+      return (
+        <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
+          <Svg width={size} height={size}>
+            <Circle
+              cx={size / 2}
+              cy={size / 2}
+              r={radius}
+              stroke={trackColor}
+              strokeWidth={strokeWidth}
+              fill="none"
+            />
+          </Svg>
+        </View>
+      );
+    }
+
+    if (minutes === 0) {
+      if (isToday) {
+        return (
+          <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
+            <Svg width={size} height={size}>
+              <Circle
+                cx={size / 2}
+                cy={size / 2}
+                r={radius}
+                stroke="rgba(255,255,255,0.25)"
+                strokeWidth={strokeWidth}
+                fill="none"
+              />
+            </Svg>
+          </View>
+        );
+      }
+      return (
+        <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
+          <View
+            style={{
+              width: size - 2,
+              height: size - 2,
+              borderRadius: size / 2,
+              backgroundColor: "rgba(255,255,255,0.65)",
+            }}
+          />
+        </View>
+      );
+    }
+
+    // Has data: show progress ring
     return (
       <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
         <Svg width={size} height={size}>
@@ -101,76 +186,47 @@ function DayCircle({ size, minutes, isToday, isFuture, isCurrentMonth }: DayCirc
             r={radius}
             stroke={trackColor}
             strokeWidth={strokeWidth}
+            fill={filledBg}
+          />
+          <Circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            stroke={progressColor}
+            strokeWidth={strokeWidth}
             fill="none"
+            strokeDasharray={`${circumference}`}
+            strokeDashoffset={strokeDashoffset}
+            strokeLinecap="round"
+            rotation={-90}
+            origin={`${size / 2}, ${size / 2}`}
           />
         </Svg>
       </View>
     );
-  }
+  })();
 
-  if (minutes === 0) {
-    // No data: filled white circle (past days) or outline (today with 0)
-    if (isToday) {
-      return (
-        <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
-          <Svg width={size} height={size}>
-            <Circle
-              cx={size / 2}
-              cy={size / 2}
-              r={radius}
-              stroke="rgba(255,255,255,0.25)"
-              strokeWidth={strokeWidth}
-              fill="none"
-            />
-          </Svg>
-        </View>
-      );
-    }
-    // Past day with no data: solid muted circle
+  if (isSelected) {
+    const outerSize = size + (selectedPadding + selectedBorderWidth) * 2;
     return (
-      <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
-        <View
-          style={{
-            width: size - 2,
-            height: size - 2,
-            borderRadius: size / 2,
-            backgroundColor: "rgba(255,255,255,0.65)",
-          }}
-        />
+      <View
+        style={{
+          width: outerSize,
+          height: outerSize,
+          alignItems: "center",
+          justifyContent: "center",
+          borderRadius: outerSize / 2,
+          borderWidth: selectedBorderWidth,
+          borderColor: "#fff",
+          margin: -(selectedPadding + selectedBorderWidth),
+        }}
+      >
+        {circle}
       </View>
     );
   }
 
-  // Has data: show progress ring
-  return (
-    <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
-      <Svg width={size} height={size}>
-        {/* Background track */}
-        <Circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          stroke={trackColor}
-          strokeWidth={strokeWidth}
-          fill={filledBg}
-        />
-        {/* Progress arc */}
-        <Circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          stroke={progressColor}
-          strokeWidth={strokeWidth}
-          fill="none"
-          strokeDasharray={`${circumference}`}
-          strokeDashoffset={strokeDashoffset}
-          strokeLinecap="round"
-          rotation={-90}
-          origin={`${size / 2}, ${size / 2}`}
-        />
-      </Svg>
-    </View>
-  );
+  return circle;
 }
 
 // ── Calendar grid ──
@@ -274,6 +330,10 @@ export default function CalendarScreen() {
   const now = new Date();
   const todayStr = dateKey(now.getFullYear(), now.getMonth(), now.getDate());
 
+  // Month navigation state
+  const [viewYear, setViewYear] = useState(now.getFullYear());
+  const [viewMonth, setViewMonth] = useState(now.getMonth());
+
   const [selectedDay, setSelectedDay] = useState<CalendarDay | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -289,8 +349,8 @@ export default function CalendarScreen() {
   }, []);
 
   const cells = useMemo(
-    () => buildMonth(now.getFullYear(), now.getMonth(), todayStr),
-    [refreshKey],
+    () => buildMonth(viewYear, viewMonth, todayStr),
+    [viewYear, viewMonth, refreshKey],
   );
 
   // Today's entry for the header display
@@ -323,6 +383,43 @@ export default function CalendarScreen() {
   // Current day of week index (Mon-start) for highlighting header
   const currentWeekday = mondayStart(now.getDay());
 
+  // Check if viewing current month
+  const isCurrentMonth =
+    viewYear === now.getFullYear() && viewMonth === now.getMonth();
+
+  // Navigation bounds
+  const firstLog = useMemo(() => getFirstLogDate(), [refreshKey]);
+  const firstLogYear = firstLog ? parseInt(firstLog.slice(0, 4)) : now.getFullYear();
+  const firstLogMonth = firstLog ? parseInt(firstLog.slice(5, 7)) - 1 : now.getMonth();
+
+  const canGoNext = !isCurrentMonth;
+  const canGoPrev =
+    viewYear > firstLogYear ||
+    (viewYear === firstLogYear && viewMonth > firstLogMonth);
+
+  // Navigation
+  const goToPrevMonth = () => {
+    if (!canGoPrev) return;
+    if (viewMonth === 0) {
+      setViewYear(viewYear - 1);
+      setViewMonth(11);
+    } else {
+      setViewMonth(viewMonth - 1);
+    }
+    setSelectedDay(null);
+  };
+
+  const goToNextMonth = () => {
+    if (!canGoNext) return;
+    if (viewMonth === 11) {
+      setViewYear(viewYear + 1);
+      setViewMonth(0);
+    } else {
+      setViewMonth(viewMonth + 1);
+    }
+    setSelectedDay(null);
+  };
+
   return (
     <LinearGradient
       colors={["#c0cfe0", "#7a92b5", "#3a5278", "#152238", "#0a1628"]}
@@ -333,12 +430,15 @@ export default function CalendarScreen() {
         style={[
           styles.screen,
           {
-            paddingTop: insets.top + 24,
+            paddingTop: insets.top,
             paddingBottom: insets.bottom + 80,
           },
         ]}
       >
-        {/* ── Header: time display ── */}
+        {/* ── Spacer to push everything to bottom ── */}
+        <View style={styles.spacer} />
+
+        {/* ── Info: time display ── */}
         <View style={styles.header}>
           <Text style={styles.bigTime}>{formatTime(displayMinutes)}</Text>
           <View style={styles.dateRow}>
@@ -353,6 +453,37 @@ export default function CalendarScreen() {
           </View>
         </View>
 
+        {/* ── Month navigation ── */}
+        <View style={styles.monthNav}>
+          <Pressable onPress={goToPrevMonth} hitSlop={16} disabled={!canGoPrev}>
+            <Ionicons
+              name="chevron-back"
+              size={24}
+              color={canGoPrev ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.2)"}
+            />
+          </Pressable>
+          <Pressable
+            onPress={() => {
+              if (!isCurrentMonth) {
+                setViewYear(now.getFullYear());
+                setViewMonth(now.getMonth());
+                setSelectedDay(null);
+              }
+            }}
+          >
+            <Text style={styles.monthTitle}>
+              {MONTH_NAMES_FULL[viewMonth]} {viewYear}
+            </Text>
+          </Pressable>
+          <Pressable onPress={goToNextMonth} hitSlop={16} disabled={!canGoNext}>
+            <Ionicons
+              name="chevron-forward"
+              size={24}
+              color={canGoNext ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.2)"}
+            />
+          </Pressable>
+        </View>
+
         {/* ── Calendar grid ── */}
         <View style={[styles.gridContainer, { paddingHorizontal: gridPadding }]}>
           {/* Weekday headers */}
@@ -363,7 +494,7 @@ export default function CalendarScreen() {
                 style={[
                   styles.weekdayLabel,
                   { width: circleSize },
-                  i === currentWeekday && styles.weekdayLabelActive,
+                  isCurrentMonth && i === currentWeekday && styles.weekdayLabelActive,
                 ]}
               >
                 {label}
@@ -378,7 +509,7 @@ export default function CalendarScreen() {
                 <Pressable
                   key={cell.key}
                   onPress={() => {
-                    if (!cell.isFuture) {
+                    if (!cell.isFuture && cell.isCurrentMonth) {
                       setSelectedDay(
                         selectedDay?.key === cell.key ? null : cell,
                       );
@@ -387,10 +518,11 @@ export default function CalendarScreen() {
                 >
                   <DayCircle
                     size={circleSize}
-                    minutes={cell.minutes}
+                    minutes={cell.isCurrentMonth ? cell.minutes : 0}
                     isToday={cell.isToday}
                     isFuture={cell.isFuture}
                     isCurrentMonth={cell.isCurrentMonth}
+                    isSelected={selectedDay?.key === cell.key}
                   />
                 </Pressable>
               ))}
@@ -409,14 +541,20 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     alignItems: "center",
+    justifyContent: "flex-end",
   },
 
-  /* ── Header ── */
+  /* ── Spacer pushes content to bottom ── */
+  spacer: {
+    flex: 1,
+  },
+
+  /* ── Header (info section above calendar) ── */
   header: {
     alignItems: "flex-start",
     width: "100%",
     paddingHorizontal: 28,
-    marginBottom: 16,
+    marginBottom: 60,
   },
   bigTime: {
     fontSize: 64,
@@ -448,10 +586,24 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.7)",
   },
 
+  /* ── Month navigation ── */
+  monthNav: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    width: "100%",
+    paddingHorizontal: 28,
+    marginBottom: 16,
+  },
+  monthTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#fff",
+  },
+
   /* ── Grid ── */
   gridContainer: {
-    flex: 1,
-    justifyContent: "flex-end",
+    width: "100%",
   },
   weekdayRow: {
     flexDirection: "row",

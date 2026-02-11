@@ -3,14 +3,18 @@ import {
   StyleSheet,
   Text,
   View,
-  Pressable,
   Switch,
+  Pressable,
+  Modal,
+  ScrollView,
   AppState,
   type AppStateStatus,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Slider from "@react-native-community/slider";
+// GlassView removed — caused dark background artifacts on re-render
+import { Ionicons } from "@expo/vector-icons";
 import {
   loadSettings,
   saveSettings,
@@ -33,7 +37,6 @@ function snapTo15(minutes: number): number {
 }
 
 function minutesToSlider(minutes: number): number {
-  // Normalize: if stored value is 0–179 (12:00 am – 2:59 am), treat as next-day
   let m = minutes;
   if (m < SLIDER_MIN_MINUTES) m += 1440;
   const clamped = Math.max(SLIDER_MIN_MINUTES, Math.min(SLIDER_MAX_MINUTES, m));
@@ -43,21 +46,32 @@ function minutesToSlider(minutes: number): number {
 function sliderToMinutes(value: number): number {
   const raw = SLIDER_MIN_MINUTES + value * SLIDER_RANGE;
   const snapped = snapTo15(raw);
-  // Wrap back to 0-1439
   return snapped >= 1440 ? snapped - 1440 : snapped;
+}
+
+/** Format a fixed minutes-from-midnight value in system locale */
+function formatFixedTime(minutes: number): string {
+  const d = new Date();
+  const m = ((minutes % 1440) + 1440) % 1440;
+  d.setHours(Math.floor(m / 60), m % 60, 0, 0);
+  return d.toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const [settings, setSettings] = useState<Settings | null>(null);
   const [sliderValue, setSliderValue] = useState(0.5);
-  const [dirty, setDirty] = useState(false);
+  const [infoVisible, setInfoVisible] = useState(false);
+  const [bedTimeTooltip, setBedTimeTooltip] = useState(false);
+  const [analyticsTooltip, setAnalyticsTooltip] = useState(false);
 
   const load = useCallback(() => {
     const s = loadSettings();
     setSettings(s);
     setSliderValue(minutesToSlider(s.bedTimeMinutes));
-    setDirty(false);
   }, []);
 
   useEffect(() => {
@@ -69,29 +83,36 @@ export default function SettingsScreen() {
     const sub = AppState.addEventListener(
       "change",
       (state: AppStateStatus) => {
-        if (state === "active" && !dirty) load();
+        if (state === "active") load();
       },
     );
     return () => sub.remove();
-  }, [load, dirty]);
+  }, [load]);
 
   if (!settings) return null;
 
   const displayMinutes = sliderToMinutes(sliderValue);
 
-  const handleSliderChange = (value: number) => {
-    setSliderValue(value);
-    setDirty(true);
-  };
-
-  const handleSave = () => {
-    const updated: Settings = {
-      bedTimeMinutes: displayMinutes,
-      analyticsEnabled: settings.analyticsEnabled,
-    };
+  // Auto-save helpers
+  const persist = (updated: Settings) => {
     saveSettings(updated);
     setSettings(updated);
-    setDirty(false);
+  };
+
+  const handleSliderComplete = (value: number) => {
+    setSliderValue(value);
+    persist({
+      ...settings,
+      bedTimeMinutes: sliderToMinutes(value),
+    });
+  };
+
+  const handleSliderChange = (value: number) => {
+    setSliderValue(value);
+  };
+
+  const handleToggleAnalytics = (value: boolean) => {
+    persist({ ...settings, analyticsEnabled: value });
   };
 
   return (
@@ -100,85 +121,290 @@ export default function SettingsScreen() {
       locations={[0, 0.25, 0.5, 0.75, 1]}
       style={styles.fill}
     >
-      <View
-        style={[
+      <ScrollView
+        style={styles.fill}
+        contentContainerStyle={[
           styles.screen,
           {
             paddingTop: insets.top + 24,
-            paddingBottom: insets.bottom + 80,
+            paddingBottom: insets.bottom + 100,
           },
         ]}
+        showsVerticalScrollIndicator={false}
       >
-        {/* ── Bed Time section ── */}
-        <View style={styles.section}>
-          <View style={styles.bedTimeHeader}>
-            <Text style={styles.bedTimeLabel}>Bed Time</Text>
+        {/* ── What's Wasted? card ── */}
+        <Pressable onPress={() => setInfoVisible(true)}>
+          <View style={styles.card}>
+            <View style={styles.infoCardContent}>
+              <View style={styles.infoCardLeft}>
+                <Text style={styles.infoCardTitle}>What's Wasted?</Text>
+                <Text style={styles.infoCardSubtitle}>
+                  Tap to learn how the app works
+                </Text>
+              </View>
+              <Ionicons
+                name="chevron-forward"
+                size={22}
+                color="rgba(255,255,255,0.5)"
+              />
+            </View>
+          </View>
+        </Pressable>
+
+        {/* ── Bed Time ── */}
+        <View style={styles.cardWrapper}>
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <Ionicons
+                name="moon-outline"
+                size={22}
+                color="rgba(255,255,255,0.7)"
+              />
+              <Text style={styles.cardLabel}>Bed Time</Text>
+              <View style={styles.headerSpacer} />
+              <Pressable
+                onPress={() => {
+                  setBedTimeTooltip(!bedTimeTooltip);
+                  setAnalyticsTooltip(false);
+                }}
+                hitSlop={12}
+              >
+                <Ionicons
+                  name="information-circle-outline"
+                  size={20}
+                  color="rgba(255,255,255,0.4)"
+                />
+              </Pressable>
+            </View>
             <Text style={styles.bedTimeValue}>
               {formatBedTime(displayMinutes)}
             </Text>
-          </View>
-
-          <View style={styles.sliderContainer}>
-            <Slider
-              style={styles.slider}
-              minimumValue={0}
-              maximumValue={1}
-              value={sliderValue}
-              onValueChange={handleSliderChange}
-              minimumTrackTintColor="rgba(255,255,255,0.8)"
-              maximumTrackTintColor="rgba(255,255,255,0.8)"
-              thumbTintColor="#fff"
-            />
-            <View style={styles.sliderLabels}>
-              <Text style={styles.sliderLabel}>7:00 pm</Text>
-              <Text style={styles.sliderLabel}>3:00 am</Text>
+            <Text style={styles.bedTimeHint}>
+              Timer stops at this time
+            </Text>
+            <View style={styles.sliderContainer}>
+              <Slider
+                style={styles.slider}
+                minimumValue={0}
+                maximumValue={1}
+                value={sliderValue}
+                onValueChange={handleSliderChange}
+                onSlidingComplete={handleSliderComplete}
+                minimumTrackTintColor="rgba(255,255,255,0.6)"
+                maximumTrackTintColor="rgba(255,255,255,0.2)"
+                thumbTintColor="#fff"
+              />
+              <View style={styles.sliderLabels}>
+                <Text style={styles.sliderLabel}>
+                  {formatFixedTime(SLIDER_MIN_MINUTES)}
+                </Text>
+                <Text style={styles.sliderLabel}>
+                  {formatFixedTime(SLIDER_MAX_MINUTES % 1440)}
+                </Text>
+              </View>
             </View>
           </View>
+          {bedTimeTooltip && (
+            <View style={styles.tooltipOverlay}>
+              <Text style={styles.tooltipText}>
+                The timer will automatically stop tracking at your bed time.
+                This prevents overnight sessions from inflating your data.
+              </Text>
+            </View>
+          )}
         </View>
 
-        <View style={styles.divider} />
-
-        {/* ── Analytics toggle ── */}
-        <View style={styles.toggleRow}>
-          <Text style={styles.toggleText}>
-            Allow us to send{"\n"}anonymous Data for{"\n"}Development
-          </Text>
-          <Switch
-            value={settings.analyticsEnabled}
-            onValueChange={(value) => {
-              setSettings({ ...settings, analyticsEnabled: value });
-              setDirty(true);
-            }}
-            trackColor={{
-              false: "rgba(255,255,255,0.2)",
-              true: "rgba(255,255,255,0.6)",
-            }}
-            thumbColor={settings.analyticsEnabled ? "#fff" : "rgba(255,255,255,0.7)"}
-          />
+        {/* ── Analytics ── */}
+        <View style={styles.cardWrapper}>
+          <View style={styles.card}>
+            <View style={styles.toggleRow}>
+              <View style={styles.toggleLeft}>
+                <Ionicons
+                  name="analytics-outline"
+                  size={22}
+                  color="rgba(255,255,255,0.7)"
+                />
+                <View style={styles.toggleTextGroup}>
+                  <Text style={styles.cardLabel}>Analytics</Text>
+                  <Text style={styles.toggleDescription}>
+                    Anonymous usage data
+                  </Text>
+                </View>
+              </View>
+              <Pressable
+                onPress={() => {
+                  setAnalyticsTooltip(!analyticsTooltip);
+                  setBedTimeTooltip(false);
+                }}
+                hitSlop={12}
+                style={styles.infoIconBtn}
+              >
+                <Ionicons
+                  name="information-circle-outline"
+                  size={20}
+                  color="rgba(255,255,255,0.4)"
+                />
+              </Pressable>
+              <Switch
+                value={settings.analyticsEnabled}
+                onValueChange={handleToggleAnalytics}
+                trackColor={{
+                  false: "rgba(255,255,255,0.15)",
+                  true: "rgba(255,255,255,0.45)",
+                }}
+                thumbColor="#fff"
+              />
+            </View>
+          </View>
+          {analyticsTooltip && (
+            <View style={styles.tooltipOverlay}>
+              <Text style={styles.tooltipText}>
+                We only collect anonymous data like app opens, session
+                durations, and crash reports. No personal information,
+                no tracking IDs, no data sold to third parties. Ever.
+              </Text>
+            </View>
+          )}
         </View>
 
-        <View style={styles.divider} />
+        {/* ── Widgets info ── */}
+        <View style={styles.card}>
+          <View style={styles.infoCardContent}>
+            <View style={styles.widgetInfoLeft}>
+              <Ionicons
+                name="grid-outline"
+                size={22}
+                color="rgba(255,255,255,0.7)"
+              />
+              <View style={styles.toggleTextGroup}>
+                <Text style={styles.cardLabel}>Widgets</Text>
+                <Text style={styles.toggleDescription}>
+                  Add a home screen widget to track time at a glance
+                </Text>
+              </View>
+            </View>
+            <Ionicons
+              name="open-outline"
+              size={18}
+              color="rgba(255,255,255,0.35)"
+            />
+          </View>
+        </View>
+      </ScrollView>
 
-        {/* ── Widgets promo ── */}
-        <Text style={styles.widgetsText}>
-          Use our Widgets for{"\n"}better Results!
-        </Text>
-
-        {/* ── Spacer + Save button ── */}
-        <View style={styles.spacer} />
-
-        <View style={styles.saveRow}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.saveButton,
-              pressed && styles.saveButtonPressed,
+      {/* ── Info Bottom Sheet ── */}
+      <Modal
+        visible={infoVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setInfoVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View
+            style={[
+              styles.modalSheet,
+              { paddingBottom: 0 },
             ]}
-            onPress={handleSave}
           >
-            <Text style={styles.saveButtonText}>Save</Text>
-          </Pressable>
+            <LinearGradient
+              colors={["#2a4a72", "#1a3355", "#0e1f3a"]}
+              locations={[0, 0.5, 1]}
+              style={styles.modalGradient}
+            >
+              {/* Close button */}
+              <View style={styles.modalHeader}>
+                <View style={styles.modalHeaderSpacer} />
+                <Pressable
+                  onPress={() => setInfoVisible(false)}
+                  hitSlop={16}
+                  style={({ pressed }) => [
+                    styles.closeButton,
+                    pressed && styles.closeButtonPressed,
+                  ]}
+                >
+                  <Ionicons name="close" size={20} color="#fff" />
+                </Pressable>
+              </View>
+
+              <ScrollView
+                style={styles.modalScroll}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.modalContent}
+              >
+                <Text style={styles.modalTitle}>
+                  Welcome to Wasted
+                </Text>
+                <Text style={styles.modalEmoji}>⏱</Text>
+
+                <Text style={styles.modalText}>
+                  Wasted helps you become more aware of how you spend your
+                  screen time — not by restricting you, but by showing you
+                  the truth.
+                </Text>
+
+                <Text style={styles.modalText}>
+                  Whenever you catch yourself mindlessly scrolling, just
+                  swipe the pill up to start tracking. When you put your
+                  phone down, swipe it back. It's that simple.
+                </Text>
+
+                <Text style={styles.modalText}>
+                  Over time, you'll build a picture of your habits on the
+                  calendar. There's no judgement here — just honest data
+                  to help you make better choices.
+                </Text>
+
+                <View style={styles.modalFeatures}>
+                  <View style={styles.featureRow}>
+                    <Ionicons
+                      name="time-outline"
+                      size={20}
+                      color="rgba(255,255,255,0.7)"
+                    />
+                    <Text style={styles.featureText}>
+                      Track wasted time with a simple swipe
+                    </Text>
+                  </View>
+                  <View style={styles.featureRow}>
+                    <Ionicons
+                      name="calendar-outline"
+                      size={20}
+                      color="rgba(255,255,255,0.7)"
+                    />
+                    <Text style={styles.featureText}>
+                      Review your habits on the calendar
+                    </Text>
+                  </View>
+                  <View style={styles.featureRow}>
+                    <Ionicons
+                      name="moon-outline"
+                      size={20}
+                      color="rgba(255,255,255,0.7)"
+                    />
+                    <Text style={styles.featureText}>
+                      Set a bed time to auto-stop tracking
+                    </Text>
+                  </View>
+                  <View style={styles.featureRow}>
+                    <Ionicons
+                      name="hand-left-outline"
+                      size={20}
+                      color="rgba(255,255,255,0.7)"
+                    />
+                    <Text style={styles.featureText}>
+                      No judgement — just awareness
+                    </Text>
+                  </View>
+                </View>
+
+                <Text style={styles.modalFooter}>
+                  Your data stays on your device. Always.
+                </Text>
+              </ScrollView>
+            </LinearGradient>
+          </View>
         </View>
-      </View>
+      </Modal>
     </LinearGradient>
   );
 }
@@ -188,32 +414,101 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   screen: {
+    paddingHorizontal: 20,
+    gap: 14,
+  },
+
+  /* ── Cards ── */
+  card: {
+    borderRadius: 22,
+    padding: 20,
+    overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.12)",
+  },
+
+  /* ── Info card ── */
+  infoCardContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  infoCardLeft: {
     flex: 1,
-    paddingHorizontal: 28,
+  },
+  infoCardTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#fff",
+  },
+  infoCardSubtitle: {
+    fontSize: 14,
+    fontWeight: "400",
+    color: "rgba(255,255,255,0.5)",
+    marginTop: 2,
+  },
+
+  /* ── Card shared ── */
+  cardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 12,
+  },
+  headerSpacer: {
+    flex: 1,
+  },
+  cardLabel: {
+    fontSize: 17,
+    fontWeight: "600",
+    color: "#fff",
+  },
+
+  /* ── Card wrapper (for tooltip positioning) ── */
+  cardWrapper: {
+    position: "relative",
+    zIndex: 1,
+  },
+
+  /* ── Tooltips ── */
+  tooltipOverlay: {
+    position: "absolute",
+    top: "100%",
+    left: 12,
+    right: 12,
+    marginTop: 6,
+    backgroundColor: "rgba(30,50,80,1.0)",
+    borderRadius: 12,
+    padding: 12,
+    zIndex: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  tooltipText: {
+    fontSize: 13,
+    fontWeight: "400",
+    color: "rgba(255,255,255,0.85)",
+    lineHeight: 19,
   },
 
   /* ── Bed Time ── */
-  section: {
-    marginBottom: 8,
-  },
-  bedTimeHeader: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    gap: 16,
-    marginBottom: 12,
-  },
-  bedTimeLabel: {
-    fontSize: 28,
-    fontWeight: "700",
-    color: "rgba(20,30,60,0.85)",
-  },
   bedTimeValue: {
-    fontSize: 28,
-    fontWeight: "700",
-    color: "rgba(20,30,60,0.85)",
+    fontSize: 38,
+    fontWeight: "800",
+    color: "#fff",
+    marginBottom: 2,
+  },
+  bedTimeHint: {
+    fontSize: 13,
+    fontWeight: "400",
+    color: "rgba(255,255,255,0.4)",
+    marginBottom: 16,
   },
   sliderContainer: {
-    marginBottom: 4,
+    marginTop: 4,
   },
   slider: {
     width: "100%",
@@ -223,18 +518,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     paddingHorizontal: 4,
+    marginTop: -2,
   },
   sliderLabel: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: "500",
-    color: "rgba(20,30,60,0.6)",
-  },
-
-  /* ── Divider ── */
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(255,255,255,0.35)",
-    marginVertical: 20,
+    color: "rgba(255,255,255,0.4)",
   },
 
   /* ── Toggle ── */
@@ -243,41 +532,118 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
-  toggleText: {
-    fontSize: 18,
-    fontWeight: "500",
-    color: "rgba(255,255,255,0.5)",
-    lineHeight: 26,
+  toggleLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
+    marginRight: 8,
+  },
+  toggleTextGroup: {
+    flex: 1,
+  },
+  toggleDescription: {
+    fontSize: 13,
+    fontWeight: "400",
+    color: "rgba(255,255,255,0.4)",
+    marginTop: 2,
+  },
+  infoIconBtn: {
+    marginRight: 12,
+  },
+
+  /* ── Widgets ── */
+  widgetInfoLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
     flex: 1,
   },
 
-  /* ── Widgets promo ── */
-  widgetsText: {
+  /* ── Modal ── */
+  modalOverlay: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0,0,0,0.4)",
+  },
+  modalSheet: {
+    height: "88%",
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    overflow: "hidden",
+  },
+  modalGradient: {
+    flex: 1,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 8,
+  },
+  modalHeaderSpacer: {
+    flex: 1,
+  },
+  closeButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  closeButtonPressed: {
+    opacity: 0.6,
+  },
+  modalScroll: {
+    flex: 1,
+  },
+  modalContent: {
+    paddingHorizontal: 28,
+    paddingBottom: 40,
+  },
+  modalTitle: {
     fontSize: 32,
     fontWeight: "800",
     color: "#fff",
-    lineHeight: 42,
+    marginBottom: 8,
   },
-
-  /* ── Save ── */
-  spacer: {
+  modalEmoji: {
+    fontSize: 48,
+    marginBottom: 24,
+  },
+  modalText: {
+    fontSize: 17,
+    fontWeight: "400",
+    color: "rgba(255,255,255,0.75)",
+    lineHeight: 26,
+    marginBottom: 16,
+  },
+  modalFeatures: {
+    marginTop: 12,
+    marginBottom: 24,
+    gap: 16,
+  },
+  featureRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  featureText: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: "rgba(255,255,255,0.7)",
     flex: 1,
   },
-  saveRow: {
-    alignItems: "flex-end",
-  },
-  saveButton: {
-    backgroundColor: "#fff",
-    paddingHorizontal: 36,
-    paddingVertical: 14,
-    borderRadius: 16,
-  },
-  saveButtonPressed: {
-    opacity: 0.7,
-  },
-  saveButtonText: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "rgba(20,30,60,0.85)",
+  modalFooter: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "rgba(255,255,255,0.35)",
+    textAlign: "center",
+    marginTop: 8,
   },
 });
