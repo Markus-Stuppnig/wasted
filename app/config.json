@@ -1,0 +1,19 @@
+{
+  "accentColor": "#cf3e03",
+  "onboarding": {
+    "screens": [
+      {
+        "title": "Welcome to Wasted",
+        "subtitle": "We help you become aware of your time spending habits."
+      },
+      {
+        "title": "You define wasted",
+        "subtitle": "You decide what counts toward wasted time."
+      },
+      {
+        "title": "Swipe up. Swipe down.",
+        "subtitle": "Swipe up when you start wasting time. Swipe down when you stop."
+      }
+    ]
+  }
+}

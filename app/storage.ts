@@ -106,6 +106,7 @@ function findOpenSession(data: StorageData): {
  */
 export function loadToday(): {
   wastedMinutes: number;
+  wastedMs: number;
   isWasting: boolean;
 } {
   const data = readData();
@@ -133,12 +134,10 @@ export function loadToday(): {
     totalMs += now - runningSession.start;
   }
 
-  const wastedMinutes = Math.min(
-    1440,
-    Math.max(0, Math.floor(totalMs / 60_000)),
-  );
+  const clampedMs = Math.min(1440 * 60_000, Math.max(0, totalMs));
+  const wastedMinutes = Math.floor(clampedMs / 60_000);
 
-  return { wastedMinutes, isWasting: runningSession != null };
+  return { wastedMinutes, wastedMs: clampedMs, isWasting: runningSession != null };
 }
 
 /** Start a new wasting session right now */
@@ -209,27 +208,85 @@ export function getDayMinutes(dateKey: string): number {
   return Math.max(0, Math.floor(totalDayMs(day) / 60_000));
 }
 
-/** Get the 7-day average (excluding today) */
-export function get7dAverage(): number {
-  const data = readData();
-  const last7: number[] = [];
+/**
+ * Get the rolling average (up to 7 days, excluding today).
+ * Returns null if the app was installed today (no prior days to average).
+ * Uses the install date from settings to determine how many days to average.
+ */
+export function get7dAverage(firstOpenedAt: string | null): { averageMs: number | null } {
+  if (!firstOpenedAt) return { averageMs: null };
 
-  for (let i = 1; i <= 7; i++) {
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const installDate = new Date(firstOpenedAt);
+  const installDayStart = new Date(installDate.getFullYear(), installDate.getMonth(), installDate.getDate());
+
+  // Days between install day and today (not counting today)
+  const daysSinceInstall = Math.floor((todayStart.getTime() - installDayStart.getTime()) / 86_400_000);
+  if (daysSinceInstall <= 0) return { averageMs: null };
+
+  const daysToAverage = Math.min(daysSinceInstall, 7);
+  const data = readData();
+  let totalMs = 0;
+
+  for (let i = 1; i <= daysToAverage; i++) {
     const d = new Date();
     d.setDate(d.getDate() - i);
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     const day = data.days.find((entry) => entry.date === key);
-    last7.push(day ? Math.max(0, Math.floor(totalDayMs(day) / 60_000)) : 0);
+    totalMs += day ? totalDayMs(day) : 0;
   }
 
-  if (last7.length === 0) return 0;
-  return Math.round(last7.reduce((a, b) => a + b, 0) / last7.length);
+  return { averageMs: Math.round(totalMs / daysToAverage) };
 }
 
 /** Get all stored day entries (for calendar view) */
 export function getAllDays(): DayEntry[] {
   const data = readData();
   return data.days;
+}
+
+/** Get a map of date → wasted minutes for all stored days (single disk read) */
+export function getAllDayMinutes(): Record<string, number> {
+  const data = readData();
+  const result: Record<string, number> = {};
+  for (const day of data.days) {
+    result[day.date] = Math.max(0, Math.floor(totalDayMs(day) / 60_000));
+  }
+  return result;
+}
+
+/**
+ * If there's an open session and bed time has passed since it started,
+ * close the session at the bed time timestamp. Returns true if a session was stopped.
+ */
+export function checkAndStopAtBedTime(bedTimeMinutes: number): boolean {
+  const data = readData();
+  const open = findOpenSession(data);
+  if (!open) return false;
+
+  const now = Date.now();
+  const sessionStart = open.session.start;
+
+  // Walk forward from the session start day looking for a bed time in (start, now]
+  const startDate = new Date(sessionStart);
+  const day = new Date(
+    startDate.getFullYear(),
+    startDate.getMonth(),
+    startDate.getDate(),
+  );
+
+  for (let i = 0; i < 3; i++) {
+    const candidate = day.getTime() + bedTimeMinutes * 60_000;
+    if (candidate > sessionStart && candidate <= now) {
+      open.session.end = candidate;
+      writeData(data);
+      return true;
+    }
+    day.setDate(day.getDate() + 1);
+  }
+
+  return false;
 }
 
 /** Get the earliest logged date string ("YYYY-MM-DD"), or null if no data */

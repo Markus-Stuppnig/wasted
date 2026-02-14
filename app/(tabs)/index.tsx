@@ -1,7 +1,5 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 import {
-  StyleSheet,
-  Text,
   View,
   Pressable,
   Animated,
@@ -10,23 +8,32 @@ import {
   AppState,
   type AppStateStatus,
 } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
+import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Text } from "../components/Text";
+
+const AnimatedText = Animated.createAnimatedComponent(Text);
 import {
   PanGestureHandler,
+  TapGestureHandler,
   State,
   type PanGestureHandlerGestureEvent,
   type PanGestureHandlerStateChangeEvent,
+  type TapGestureHandlerStateChangeEvent,
 } from "react-native-gesture-handler";
+import * as Haptics from "expo-haptics";
 import {
   loadToday,
   startWasting,
   stopWasting,
   adjustMinutes,
   get7dAverage,
+  checkAndStopAtBedTime,
 } from "../storage";
+import { loadSettings } from "../settings-storage";
+import Background from "../Background";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const CARD_WIDTH = SCREEN_WIDTH * 0.82;
@@ -34,31 +41,39 @@ const CARD_WIDTH = SCREEN_WIDTH * 0.82;
 const MAX_MINUTES = 24 * 60;
 const INNER_PADDING = 8;
 
-function formatTime(totalMinutes: number): string {
+function formatTimeMs(totalMs: number): string {
+  const totalSeconds = Math.floor(totalMs / 1000);
+  const totalMinutes = Math.floor(totalSeconds / 60);
   const h = Math.floor(totalMinutes / 60);
   const m = totalMinutes % 60;
-  if (h === 0) return `${m}m`;
-  return `${h}h ${m.toString().padStart(2, "0")}m`;
+  const s = totalSeconds % 60;
+  if (h >= 1) return `${h}h ${m.toString().padStart(2, "0")}m`;
+  if (m === 0) return `${s}s`;
+  return `${m}m ${s.toString().padStart(2, "0")}s`;
 }
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
-  const [wastedMinutes, setWastedMinutes] = useState(0);
+  const [wastedMs, setWastedMs] = useState(0);
   const [isWasting, setIsWasting] = useState(false);
-  const [averageMinutes, setAverageMinutes] = useState(0);
+  const [averageMs, setAverageMs] = useState<number | null>(null);
   const [loaded, setLoaded] = useState(false);
 
   // ── Load persisted data on mount & app foreground ──
   const refresh = useCallback(() => {
-    const { wastedMinutes: wm, isWasting: iw } = loadToday();
-    setWastedMinutes(wm);
+    // Auto-stop if bed time passed while app was backgrounded
+    const settings = loadSettings();
+    checkAndStopAtBedTime(settings.bedTimeMinutes);
+
+    const { wastedMs: wms, isWasting: iw } = loadToday();
+    setWastedMs(wms);
     setIsWasting(iw);
     isWastingRef.current = iw;
     if (iw) {
       pillY.setValue(-pillTravelRef.current);
     }
-    const avg = get7dAverage();
-    setAverageMinutes(avg);
+    const { averageMs: avg } = get7dAverage(settings.firstOpenedAt);
+    setAverageMs(avg);
     setLoaded(true);
   }, []);
 
@@ -77,13 +92,34 @@ export default function HomeScreen() {
     return () => sub.remove();
   }, [refresh]);
 
-  // Recalculate displayed minutes every 15s from timestamps when wasting
+  // Recalculate displayed time every second when wasting
+  // Also check if bed time has arrived and auto-stop
   useEffect(() => {
     if (!isWasting) return;
     const id = setInterval(() => {
-      const { wastedMinutes: wm } = loadToday();
-      setWastedMinutes(wm);
-    }, 15_000);
+      const { bedTimeMinutes } = loadSettings();
+      const stopped = checkAndStopAtBedTime(bedTimeMinutes);
+      if (stopped) {
+        // Bed time reached — snap pill back to "Living"
+        setIsWasting(false);
+        isWastingRef.current = false;
+        Animated.spring(pillY, {
+          toValue: 0,
+          useNativeDriver: true,
+          damping: 20,
+          stiffness: 180,
+          mass: 1,
+        }).start();
+        const { wastedMs: wms } = loadToday();
+        setWastedMs(wms);
+        const { firstOpenedAt } = loadSettings();
+        const { averageMs: avg } = get7dAverage(firstOpenedAt);
+        setAverageMs(avg);
+        return;
+      }
+      const { wastedMs: wms } = loadToday();
+      setWastedMs(wms);
+    }, 1_000);
     return () => clearInterval(id);
   }, [isWasting]);
 
@@ -95,56 +131,6 @@ export default function HomeScreen() {
   useEffect(() => {
     pillTravelRef.current = pillTravel;
   }, [pillTravel]);
-
-  // ── Breathing animation for timer text ──
-  const BREATH_MAX = 1.04;
-  const BREATH_DURATION = 1500;
-  const breathAnim = useRef(new Animated.Value(1)).current;
-  const breathRef = useRef<Animated.CompositeAnimation | null>(null);
-  const breathValueRef = useRef(1);
-
-  useEffect(() => {
-    const id = breathAnim.addListener(({ value }) => {
-      breathValueRef.current = value;
-    });
-    return () => breathAnim.removeListener(id);
-  }, [breathAnim]);
-
-  useEffect(() => {
-    if (isWasting) {
-      breathRef.current = Animated.loop(
-        Animated.sequence([
-          Animated.timing(breathAnim, {
-            toValue: BREATH_MAX,
-            duration: BREATH_DURATION,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-          Animated.timing(breathAnim, {
-            toValue: 1,
-            duration: BREATH_DURATION,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-        ]),
-      );
-      breathRef.current.start();
-    } else {
-      if (breathRef.current) breathRef.current.stop();
-      const current = breathValueRef.current;
-      const fraction = (current - 1) / (BREATH_MAX - 1);
-      const exhaleMs = Math.max(50, fraction * BREATH_DURATION);
-      Animated.timing(breathAnim, {
-        toValue: 1,
-        duration: exhaleMs,
-        easing: Easing.inOut(Easing.ease),
-        useNativeDriver: true,
-      }).start();
-    }
-    return () => {
-      if (breathRef.current) breathRef.current.stop();
-    };
-  }, [isWasting, breathAnim]);
 
   // ── Shiny glow animation ──
   const glowAnim = useRef(new Animated.Value(0)).current;
@@ -189,6 +175,7 @@ export default function HomeScreen() {
 
   // ── Pill gesture ──
   const isWastingRef = useRef(false);
+  const panRef = useRef<PanGestureHandler>(null);
   const pillY = useRef(new Animated.Value(0)).current;
   const dragY = useRef(new Animated.Value(0)).current;
   const combinedY = Animated.add(pillY, dragY);
@@ -244,7 +231,7 @@ export default function HomeScreen() {
   );
 
   const snapTo = useCallback(
-    (wasting: boolean) => {
+    (wasting: boolean, releaseVelocity = 0) => {
       const wasWasting = isWastingRef.current;
       isWastingRef.current = wasting;
       setIsWasting(wasting);
@@ -253,6 +240,7 @@ export default function HomeScreen() {
       Animated.parallel([
         Animated.spring(pillY, {
           toValue: target,
+          velocity: releaseVelocity,
           useNativeDriver: true,
           damping: 20,
           stiffness: 180,
@@ -260,6 +248,7 @@ export default function HomeScreen() {
         }),
         Animated.spring(dragY, {
           toValue: 0,
+          velocity: releaseVelocity,
           useNativeDriver: true,
           damping: 20,
           stiffness: 180,
@@ -267,17 +256,23 @@ export default function HomeScreen() {
         }),
       ]).start();
 
+      // Haptic feedback on state change
+      if (wasting !== wasWasting) {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+      }
+
       // Persist state change
       if (wasting && !wasWasting) {
         startWasting();
-        const { wastedMinutes: wm } = loadToday();
-        setWastedMinutes(wm);
+        const { wastedMs: wms } = loadToday();
+        setWastedMs(wms);
       } else if (!wasting && wasWasting) {
         stopWasting();
-        const { wastedMinutes: wm } = loadToday();
-        setWastedMinutes(wm);
-        const avg = get7dAverage();
-        setAverageMinutes(avg);
+        const { wastedMs: wms } = loadToday();
+        setWastedMs(wms);
+        const { firstOpenedAt } = loadSettings();
+        const { averageMs: avg } = get7dAverage(firstOpenedAt);
+        setAverageMs(avg);
       }
     },
     [pillY, dragY],
@@ -289,28 +284,34 @@ export default function HomeScreen() {
       const wasWasting = isWastingRef.current;
       const travel = pillTravelRef.current;
 
-      // Percentage-based threshold: 25% of travel distance or velocity
-      const threshold = Math.max(travel * 0.25, 30);
+      // Project where the gesture would land based on current velocity
+      // This makes flicks feel natural — a fast swipe that only moved 10%
+      // of the way will still trigger if the momentum would carry it past 50%
+      const projected = ty + velocityY * 0.15;
+      const threshold = travel * 0.5;
+
+      // Convert velocity from px/ms to px/s for the spring animation
+      const vel = velocityY / 1000;
 
       if (wasWasting) {
-        if (ty > threshold || velocityY > 300) {
-          snapTo(false);
-        } else {
-          snapTo(true);
-        }
+        snapTo(projected <= threshold, vel);
       } else {
-        if (ty < -threshold || velocityY < -300) {
-          snapTo(true);
-        } else {
-          snapTo(false);
-        }
+        snapTo(projected < -threshold, vel);
       }
     }
   };
 
+  const onTapStateChange = (e: TapGestureHandlerStateChangeEvent) => {
+    if (e.nativeEvent.state === State.ACTIVE) {
+      snapTo(!isWastingRef.current);
+    }
+  };
+
   const handleAdjust = (delta: number) => {
-    const newMinutes = adjustMinutes(delta);
-    setWastedMinutes(newMinutes);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    adjustMinutes(delta);
+    const { wastedMs: wms } = loadToday();
+    setWastedMs(wms);
   };
 
   // Sync pill position when loaded with active session
@@ -321,59 +322,67 @@ export default function HomeScreen() {
   }, [loaded, pillTravel]);
 
   return (
-    <LinearGradient
-      colors={["#c0cfe0", "#7a92b5", "#3a5278", "#152238", "#0a1628"]}
-      locations={[0, 0.25, 0.5, 0.75, 1]}
-      style={styles.fill}
-    >
+    <Background>
       <View
-        style={[
-          styles.screen,
-          {
-            paddingTop: insets.top + 48,
-            paddingBottom: insets.bottom + 80,
-          },
-        ]}
+        className="flex-1 items-center"
+        style={{
+          paddingTop: insets.top + 48,
+          paddingBottom: insets.bottom + 80,
+        }}
       >
         {/* ── Header ── */}
-        <View style={styles.header}>
-          <Text style={styles.headerLabel}>time wasted</Text>
-          <Animated.Text
-            style={[
-              styles.bigTime,
-              { transform: [{ scale: breathAnim }] },
-            ]}
+        <View className="items-center mb-7 py-2 px-6 rounded-[20px] w-full">
+          <Text className="text-xl font-semibold text-white tracking-wide mb-4">time wasted</Text>
+          <Text
+            className="font-bold text-white tracking-tight-2"
+            numberOfLines={1}
+            style={{ fontSize: 84, lineHeight: 84 }}
           >
-            {formatTime(wastedMinutes)}
-          </Animated.Text>
-          <Text style={styles.avgLabel}>7d average</Text>
-          <Text style={styles.avgValue}>{formatTime(averageMinutes)}</Text>
+            {formatTimeMs(wastedMs)}
+          </Text>
+          <Text className="text-xl font-extrabold text-white mt-4">7d average</Text>
+          <Text className="text-xl font-extrabold text-white mt-[1px]">{averageMs !== null ? formatTimeMs(averageMs) : "---"}</Text>
         </View>
 
         {/* ── -5m / +5m ── */}
-        <View style={styles.adjustRow}>
+        <View className="flex-row justify-between w-full px-8 mb-7">
           <Pressable onPress={() => handleAdjust(-5)}>
-            <BlurView style={styles.adjustBtn} tint="systemUltraThinMaterialDark" intensity={40}>
-              <Text style={styles.adjustText}>{"\u2013"}5m</Text>
-            </BlurView>
+            <View style={{ width: 76, height: 76, borderRadius: 24, overflow: "hidden" }}>
+              <BlurView
+                className="flex-1 items-center justify-center"
+                tint="systemUltraThinMaterialDark"
+                intensity={30}
+              >
+                <Text className="text-xl font-extrabold text-white-65">{"\u2013"}5m</Text>
+              </BlurView>
+            </View>
           </Pressable>
           <Pressable onPress={() => handleAdjust(5)}>
-            <BlurView style={styles.adjustBtn} tint="systemUltraThinMaterialDark" intensity={40}>
-              <Text style={styles.adjustText}>+5m</Text>
-            </BlurView>
+            <View style={{ width: 76, height: 76, borderRadius: 24, overflow: "hidden" }}>
+              <BlurView
+                className="flex-1 items-center justify-center"
+                tint="systemUltraThinMaterialDark"
+                intensity={30}
+              >
+                <Text className="text-xl font-extrabold text-white-65">+5m</Text>
+              </BlurView>
+            </View>
           </Pressable>
         </View>
 
         {/* ── Outer static glass card ── */}
-        <View style={styles.outerCardWrapper}>
+        <View style={{ flex: 1, width: CARD_WIDTH, maxHeight: 180, marginTop: "auto", marginBottom: 60 }}>
           <Animated.View
-            style={[
-              styles.outerCardGlow,
-              { shadowColor: isWasting ? "#8ab4f8" : "transparent" },
-            ]}
+            className="flex-1 rounded-card-lg"
+            style={{
+              shadowColor: isWasting ? "#8ab4f8" : "transparent",
+              shadowOffset: { width: 0, height: 0 },
+              shadowOpacity: 0.5,
+              shadowRadius: 20,
+            }}
           >
             <BlurView
-              style={styles.outerCard}
+              className="flex-1 rounded-card-lg items-center justify-center overflow-hidden"
               tint="systemUltraThinMaterialDark"
               intensity={30}
               onLayout={(e: {
@@ -382,200 +391,85 @@ export default function HomeScreen() {
             >
               {/* Shiny border overlay */}
               <Animated.View
-                style={[styles.shinyBorder, { borderColor: glowColor }]}
+                className="absolute inset-0 rounded-card-lg border-[1.5px] border-transparent"
+                style={{ borderColor: glowColor }}
                 pointerEvents="none"
               />
 
-              {/* Swipe hint — centered */}
-              <Animated.View style={[styles.swipeHint, { opacity: arrowOpacity }]}>
-                <Animated.View
-                  style={{ transform: [{ rotate: arrowRotation }] }}
-                >
-                  <Ionicons
-                    name="chevron-up"
-                    size={22}
-                    color="rgba(255,255,255,0.5)"
-                  />
+              {/* Swipe hint — tappable */}
+              <Pressable
+                onPress={() => snapTo(!isWastingRef.current)}
+                hitSlop={{ top: 20, bottom: 20, left: 40, right: 40 }}
+                className="px-10 py-4"
+              >
+                <Animated.View className="items-center" style={{ opacity: arrowOpacity }}>
+                  <Animated.View
+                    style={{ transform: [{ rotate: arrowRotation }] }}
+                  >
+                    <Ionicons
+                      name="chevron-up"
+                      size={22}
+                      color="rgba(255,255,255,0.5)"
+                    />
+                  </Animated.View>
                 </Animated.View>
-              </Animated.View>
+              </Pressable>
 
               {/* ── Inner sliding pill ── */}
-              <PanGestureHandler
-                onGestureEvent={onGestureEvent}
-                onHandlerStateChange={onHandlerStateChange}
-                activeOffsetY={[-10, 10]}
-                failOffsetX={[-20, 20]}
+              <TapGestureHandler
+                onHandlerStateChange={onTapStateChange}
+                waitFor={panRef}
               >
                 <Animated.View
-                  onLayout={(e: {
-                    nativeEvent: { layout: { height: number } };
-                  }) => setPillHeight(e.nativeEvent.layout.height)}
-                  style={[
-                    styles.innerPillTrack,
-                    { transform: [{ translateY: clampedPillY }] },
-                  ]}
+                  style={{
+                    position: "absolute",
+                    bottom: INNER_PADDING,
+                    left: INNER_PADDING,
+                    right: INNER_PADDING,
+                  }}
                 >
-                  <BlurView
-                    style={styles.innerPill}
-                    tint="systemThinMaterialDark"
-                    intensity={50}
-                >
-                    <View style={styles.pillTextContainer}>
-                      <Animated.Text
-                        style={[
-                          styles.innerPillText,
-                          { opacity: livingOpacity },
-                        ]}
+                  <PanGestureHandler
+                    ref={panRef}
+                    onGestureEvent={onGestureEvent}
+                    onHandlerStateChange={onHandlerStateChange}
+                    activeOffsetY={[-10, 10]}
+                    failOffsetX={[-20, 20]}
+                  >
+                    <Animated.View
+                      className="items-center"
+                      onLayout={(e: {
+                        nativeEvent: { layout: { height: number } };
+                      }) => setPillHeight(e.nativeEvent.layout.height)}
+                      style={{ transform: [{ translateY: clampedPillY }] }}
+                    >
+                      <BlurView
+                        className="rounded-card px-10 py-[18px] items-center justify-center w-full overflow-hidden"
+                        tint="systemThinMaterialDark"
+                        intensity={50}
                       >
-                        Living
-                      </Animated.Text>
-                      <Animated.Text
-                        style={[
-                          styles.innerPillText,
-                          styles.pillTextOverlay,
-                          { opacity: wastingOpacity },
-                        ]}
-                      >
-                        Wasting
-                      </Animated.Text>
-                    </View>
-                  </BlurView>
+                        <View className="items-center justify-center">
+                          <AnimatedText
+                            className="text-lg-plus font-extrabold text-white"
+                            style={{ opacity: livingOpacity }}
+                          >
+                            Living
+                          </AnimatedText>
+                          <AnimatedText
+                            className="text-lg-plus font-extrabold text-white absolute"
+                            style={{ opacity: wastingOpacity }}
+                          >
+                            Wasting
+                          </AnimatedText>
+                        </View>
+                      </BlurView>
+                    </Animated.View>
+                  </PanGestureHandler>
                 </Animated.View>
-              </PanGestureHandler>
+              </TapGestureHandler>
             </BlurView>
           </Animated.View>
         </View>
       </View>
-    </LinearGradient>
+    </Background>
   );
 }
-
-const styles = StyleSheet.create({
-  fill: {
-    flex: 1,
-  },
-  screen: {
-    flex: 1,
-    alignItems: "center",
-  },
-
-  /* ── Header ── */
-  header: {
-    alignItems: "center",
-    marginBottom: 28,
-    paddingVertical: 8,
-    paddingHorizontal: 24,
-    borderRadius: 20,
-  },
-  headerLabel: {
-    fontSize: 16,
-    fontWeight: "500",
-    color: "rgba(255,255,255,0.45)",
-    letterSpacing: 1,
-    marginBottom: 2,
-  },
-  bigTime: {
-    fontSize: 72,
-    fontWeight: "800",
-    color: "#fff",
-    letterSpacing: -2,
-  },
-  avgLabel: {
-    fontSize: 14,
-    color: "rgba(255,255,255,0.3)",
-    marginTop: 2,
-  },
-  avgValue: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "rgba(255,255,255,0.45)",
-    marginTop: 1,
-  },
-
-  /* ── Adjust buttons ── */
-  adjustRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    width: "100%",
-    paddingHorizontal: 32,
-    marginBottom: 28,
-  },
-  adjustBtn: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-  },
-  adjustText: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: "rgba(255,255,255,0.65)",
-  },
-
-  /* ── Outer card (static) ── */
-  outerCardWrapper: {
-    flex: 1,
-    width: CARD_WIDTH,
-    maxHeight: 250,
-    marginTop: 20,
-  },
-  outerCardGlow: {
-    flex: 1,
-    borderRadius: 28,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 20,
-  },
-  outerCard: {
-    flex: 1,
-    borderRadius: 28,
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-  },
-  shinyBorder: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderRadius: 28,
-    borderWidth: 1.5,
-    borderColor: "transparent",
-  },
-  swipeHint: {
-    alignItems: "center",
-  },
-
-  /* ── Inner pill (slides from bottom to top) ── */
-  innerPillTrack: {
-    position: "absolute",
-    bottom: INNER_PADDING,
-    left: INNER_PADDING,
-    right: INNER_PADDING,
-    alignItems: "center",
-  },
-  innerPill: {
-    borderRadius: 22,
-    paddingHorizontal: 40,
-    paddingVertical: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    width: "100%",
-    overflow: "hidden",
-  },
-  pillTextContainer: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  innerPillText: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#fff",
-  },
-  pillTextOverlay: {
-    position: "absolute",
-  },
-});

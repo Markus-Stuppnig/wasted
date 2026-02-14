@@ -1,18 +1,22 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
 import {
-  StyleSheet,
-  Text,
   View,
   Dimensions,
   Pressable,
   AppState,
   type AppStateStatus,
 } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle } from "react-native-svg";
+import { BlurView } from "expo-blur";
 import { Ionicons } from "@expo/vector-icons";
-import { getDayMinutes, loadToday, getFirstLogDate } from "../storage";
+import * as Haptics from "expo-haptics";
+import { useFocusEffect } from "expo-router";
+import { getAllDayMinutes, loadToday, getFirstLogDate } from "../storage";
+import { Text } from "../components/Text";
+import config from "../config.json";
+import Background from "../Background";
+
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -22,11 +26,15 @@ const COL_COUNT = 7;
 /** Max minutes we treat as a "full" circle */
 const FULL_DAY_MINUTES = 8 * 60; // 8 hours = full ring
 
-function formatTime(totalMinutes: number): string {
+function formatTimeMs(totalMs: number): string {
+  const totalSeconds = Math.floor(totalMs / 1000);
+  const totalMinutes = Math.floor(totalSeconds / 60);
   const h = Math.floor(totalMinutes / 60);
   const m = totalMinutes % 60;
-  if (h === 0) return `${m}m`;
-  return `${h}h ${m.toString().padStart(2, "0")}m`;
+  const s = totalSeconds % 60;
+  if (h >= 1) return `${h}h ${m.toString().padStart(2, "0")}m`;
+  if (m === 0) return `${s}s`;
+  return `${m}m ${s.toString().padStart(2, "0")}s`;
 }
 
 function dateKey(year: number, month: number, day: number): string {
@@ -101,7 +109,7 @@ function DayCircle({ size, minutes, isToday, isFuture, isCurrentMonth, isSelecte
   const trackColor = isCurrentMonth
     ? "rgba(255,255,255,0.12)"
     : "rgba(255,255,255,0.04)";
-  const progressColor = "#e8602c"; // warm orange-red
+  const progressColor = config.accentColor;
   const filledBg =
     minutes > 0 && !isFuture
       ? "rgba(255,255,255,0.08)"
@@ -115,7 +123,7 @@ function DayCircle({ size, minutes, isToday, isFuture, isCurrentMonth, isSelecte
     if (!isCurrentMonth) {
       // Out-of-month days: very faint, smaller dot
       return (
-        <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
+        <View className="items-center justify-center" style={{ width: size, height: size }}>
           <View
             style={{
               width: size * 0.45,
@@ -128,80 +136,50 @@ function DayCircle({ size, minutes, isToday, isFuture, isCurrentMonth, isSelecte
       );
     }
 
-    if (isFuture) {
-      return (
-        <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
-          <Svg width={size} height={size}>
-            <Circle
-              cx={size / 2}
-              cy={size / 2}
-              r={radius}
-              stroke={trackColor}
-              strokeWidth={strokeWidth}
-              fill="none"
-            />
-          </Svg>
-        </View>
-      );
-    }
+    // Base circle opacity: today/future = bright, past = dimmer
+    const baseBg = (isFuture || isToday)
+      ? "rgba(255,255,255,0.65)"
+      : "rgba(255,255,255,0.25)";
 
-    if (minutes === 0) {
-      if (isToday) {
-        return (
-          <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
-            <Svg width={size} height={size}>
+    // Inner progress ring (smaller than base circle)
+    const innerRingSize = size * 0.75;
+    const innerStrokeWidth = innerRingSize * 0.12;
+    const innerRadius = (innerRingSize - innerStrokeWidth) / 2;
+    const innerCircumference = 2 * Math.PI * innerRadius;
+    const innerDashoffset = innerCircumference * (1 - fraction);
+
+    const showProgress = minutes > 0 && !isFuture;
+
+    return (
+      <View className="items-center justify-center" style={{ width: size, height: size }}>
+        <View
+          style={{
+            width: size - 2,
+            height: size - 2,
+            borderRadius: size / 2,
+            backgroundColor: baseBg,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          {showProgress && (
+            <Svg width={innerRingSize} height={innerRingSize}>
               <Circle
-                cx={size / 2}
-                cy={size / 2}
-                r={radius}
-                stroke="rgba(255,255,255,0.25)"
-                strokeWidth={strokeWidth}
+                cx={innerRingSize / 2}
+                cy={innerRingSize / 2}
+                r={innerRadius}
+                stroke={progressColor}
+                strokeWidth={innerStrokeWidth}
                 fill="none"
+                strokeDasharray={`${innerCircumference}`}
+                strokeDashoffset={innerDashoffset}
+                strokeLinecap="round"
+                rotation={-90}
+                origin={`${innerRingSize / 2}, ${innerRingSize / 2}`}
               />
             </Svg>
-          </View>
-        );
-      }
-      return (
-        <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
-          <View
-            style={{
-              width: size - 2,
-              height: size - 2,
-              borderRadius: size / 2,
-              backgroundColor: "rgba(255,255,255,0.65)",
-            }}
-          />
+          )}
         </View>
-      );
-    }
-
-    // Has data: show progress ring
-    return (
-      <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}>
-        <Svg width={size} height={size}>
-          <Circle
-            cx={size / 2}
-            cy={size / 2}
-            r={radius}
-            stroke={trackColor}
-            strokeWidth={strokeWidth}
-            fill={filledBg}
-          />
-          <Circle
-            cx={size / 2}
-            cy={size / 2}
-            r={radius}
-            stroke={progressColor}
-            strokeWidth={strokeWidth}
-            fill="none"
-            strokeDasharray={`${circumference}`}
-            strokeDashoffset={strokeDashoffset}
-            strokeLinecap="round"
-            rotation={-90}
-            origin={`${size / 2}, ${size / 2}`}
-          />
-        </Svg>
       </View>
     );
   })();
@@ -235,6 +213,7 @@ interface CalendarDay {
   date: number; // day of month
   key: string; // "YYYY-MM-DD"
   minutes: number;
+  ms: number;
   isToday: boolean;
   isFuture: boolean;
   isCurrentMonth: boolean;
@@ -250,6 +229,10 @@ function buildMonth(
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const startWeekday = mondayStart(firstDay.getDay());
 
+  // Single disk read for all day minutes
+  const allMinutes = getAllDayMinutes();
+  const todayData = loadToday();
+
   const cells: CalendarDay[] = [];
 
   // Leading blanks from previous month
@@ -260,10 +243,12 @@ function buildMonth(
       const prevMonth = month === 0 ? 11 : month - 1;
       const prevYear = month === 0 ? year - 1 : year;
       const key = dateKey(prevYear, prevMonth, d);
+      const mins = allMinutes[key] ?? 0;
       cells.push({
         date: d,
         key,
-        minutes: getDayMinutes(key),
+        minutes: mins,
+        ms: mins * 60_000,
         isToday: key === todayStr,
         isFuture: new Date(prevYear, prevMonth, d) > now,
         isCurrentMonth: false,
@@ -284,17 +269,20 @@ function buildMonth(
         d > now.getDate());
 
     let minutes: number;
+    let ms: number;
     if (key === todayStr) {
-      const { wastedMinutes } = loadToday();
-      minutes = wastedMinutes;
+      minutes = todayData.wastedMinutes;
+      ms = todayData.wastedMs;
     } else {
-      minutes = getDayMinutes(key);
+      minutes = allMinutes[key] ?? 0;
+      ms = minutes * 60_000;
     }
 
     cells.push({
       date: d,
       key,
       minutes,
+      ms,
       isToday: key === todayStr,
       isFuture,
       isCurrentMonth: true,
@@ -309,10 +297,12 @@ function buildMonth(
     const nextYear = month === 11 ? year + 1 : year;
     for (let d = 1; d <= needed; d++) {
       const key = dateKey(nextYear, nextMonth, d);
+      const mins = allMinutes[key] ?? 0;
       cells.push({
         date: d,
         key,
-        minutes: getDayMinutes(key),
+        minutes: mins,
+        ms: mins * 60_000,
         isToday: key === todayStr,
         isFuture: true,
         isCurrentMonth: false,
@@ -348,6 +338,13 @@ export default function CalendarScreen() {
     return () => sub.remove();
   }, []);
 
+  // Refresh when tab gains focus (ensures calendar matches home timer)
+  useFocusEffect(
+    useCallback(() => {
+      setRefreshKey((k) => k + 1);
+    }, []),
+  );
+
   const cells = useMemo(
     () => buildMonth(viewYear, viewMonth, todayStr),
     [viewYear, viewMonth, refreshKey],
@@ -359,8 +356,35 @@ export default function CalendarScreen() {
     [cells],
   );
 
+  // Auto-select today when viewing the current month
+  useEffect(() => {
+    if (isCurrentMonth && todayCell && !selectedDay) {
+      setSelectedDay(todayCell);
+    }
+  }, [todayCell]);
+
+  // Live-ticking ms for today when a session is running
+  const todayData = useMemo(() => loadToday(), [refreshKey]);
+  const [liveMs, setLiveMs] = useState(todayData.wastedMs);
+
+  useEffect(() => {
+    setLiveMs(todayData.wastedMs);
+  }, [todayData.wastedMs]);
+
+  useEffect(() => {
+    if (!todayData.isWasting) return;
+    const id = setInterval(() => {
+      const { wastedMs: wms } = loadToday();
+      setLiveMs(wms);
+    }, 1_000);
+    return () => clearInterval(id);
+  }, [todayData.isWasting]);
+
   const displayDay = selectedDay ?? todayCell;
-  const displayMinutes = displayDay?.minutes ?? 0;
+  const isDisplayToday = displayDay?.key === todayStr;
+  const displayMs = isDisplayToday
+    ? liveMs
+    : (displayDay?.ms ?? 0);
   const displayDate = displayDay
     ? new Date(
         parseInt(displayDay.key.slice(0, 4)),
@@ -400,6 +424,7 @@ export default function CalendarScreen() {
   // Navigation
   const goToPrevMonth = () => {
     if (!canGoPrev) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     if (viewMonth === 0) {
       setViewYear(viewYear - 1);
       setViewMonth(11);
@@ -411,6 +436,7 @@ export default function CalendarScreen() {
 
   const goToNextMonth = () => {
     if (!canGoNext) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     if (viewMonth === 11) {
       setViewYear(viewYear + 1);
       setViewMonth(0);
@@ -421,207 +447,141 @@ export default function CalendarScreen() {
   };
 
   return (
-    <LinearGradient
-      colors={["#c0cfe0", "#7a92b5", "#3a5278", "#152238", "#0a1628"]}
-      locations={[0, 0.25, 0.5, 0.75, 1]}
-      style={styles.fill}
-    >
+    <Background>
       <View
-        style={[
-          styles.screen,
-          {
-            paddingTop: insets.top,
-            paddingBottom: insets.bottom + 80,
-          },
-        ]}
+        className="flex-1 items-center justify-end"
+        style={{
+          paddingTop: insets.top,
+          paddingBottom: insets.bottom + 80,
+        }}
       >
         {/* ── Spacer to push everything to bottom ── */}
-        <View style={styles.spacer} />
+        <View className="flex-1" />
 
         {/* ── Info: time display ── */}
-        <View style={styles.header}>
-          <Text style={styles.bigTime}>{formatTime(displayMinutes)}</Text>
-          <View style={styles.dateRow}>
-            <Text style={styles.dateText}>
+        <View className="items-start w-full px-7 mb-[60px]">
+          <Text className="text-hero-sm font-extrabold text-white tracking-tight-2 mb-1">
+            {formatTimeMs(displayMs)}
+          </Text>
+          <View className="flex-row justify-between items-start w-full">
+            <Text
+              className="text-xl font-extrabold leading-[26px]"
+              style={{ color: "rgba(255,255,255,0.7)" }}
+            >
               {displayDate.getDate()}. {MONTH_NAMES[displayDate.getMonth()]}
               {"\n"}
-              <Text style={styles.yearText}>{displayDate.getFullYear()}</Text>
+              <Text className="text-base font-bold text-white-40">
+                {displayDate.getFullYear()}
+              </Text>
             </Text>
-            <Text style={styles.dayName}>
+            <Text
+              className="text-xl font-extrabold"
+              style={{ color: "rgba(255,255,255,0.7)" }}
+            >
               {DAY_NAMES[displayDate.getDay()]}
             </Text>
           </View>
         </View>
 
-        {/* ── Month navigation ── */}
-        <View style={styles.monthNav}>
-          <Pressable onPress={goToPrevMonth} hitSlop={16} disabled={!canGoPrev}>
-            <Ionicons
-              name="chevron-back"
-              size={24}
-              color={canGoPrev ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.2)"}
-            />
-          </Pressable>
-          <Pressable
-            onPress={() => {
-              if (!isCurrentMonth) {
-                setViewYear(now.getFullYear());
-                setViewMonth(now.getMonth());
-                setSelectedDay(null);
-              }
-            }}
+        {/* ── Glass card behind calendar ── */}
+        <View className="w-full rounded-card-lg overflow-hidden" style={{ marginHorizontal: 16, width: SCREEN_WIDTH - 32 }}>
+          <BlurView
+            className="rounded-card-lg overflow-hidden"
+            tint="systemUltraThinMaterialDark"
+            intensity={30}
+            style={{ paddingVertical: 20 }}
           >
-            <Text style={styles.monthTitle}>
-              {MONTH_NAMES_FULL[viewMonth]} {viewYear}
-            </Text>
-          </Pressable>
-          <Pressable onPress={goToNextMonth} hitSlop={16} disabled={!canGoNext}>
-            <Ionicons
-              name="chevron-forward"
-              size={24}
-              color={canGoNext ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.2)"}
-            />
-          </Pressable>
-        </View>
-
-        {/* ── Calendar grid ── */}
-        <View style={[styles.gridContainer, { paddingHorizontal: gridPadding }]}>
-          {/* Weekday headers */}
-          <View style={styles.weekdayRow}>
-            {WEEKDAY_LABELS.map((label, i) => (
-              <Text
-                key={i}
-                style={[
-                  styles.weekdayLabel,
-                  { width: circleSize },
-                  isCurrentMonth && i === currentWeekday && styles.weekdayLabelActive,
-                ]}
-              >
-                {label}
-              </Text>
-            ))}
-          </View>
-
-          {/* Day rows */}
-          {rows.map((row, ri) => (
-            <View key={ri} style={styles.row}>
-              {row.map((cell) => (
-                <Pressable
-                  key={cell.key}
-                  onPress={() => {
-                    if (!cell.isFuture && cell.isCurrentMonth) {
-                      setSelectedDay(
-                        selectedDay?.key === cell.key ? null : cell,
-                      );
-                    }
-                  }}
-                >
-                  <DayCircle
-                    size={circleSize}
-                    minutes={cell.isCurrentMonth ? cell.minutes : 0}
-                    isToday={cell.isToday}
-                    isFuture={cell.isFuture}
-                    isCurrentMonth={cell.isCurrentMonth}
-                    isSelected={selectedDay?.key === cell.key}
+            {/* ── Month navigation ── */}
+            <View className="flex-row items-center justify-between w-full px-7 mb-4">
+              {canGoPrev ? (
+                <Pressable onPress={goToPrevMonth} hitSlop={16}>
+                  <Ionicons
+                    name="chevron-back"
+                    size={24}
+                    color="rgba(255,255,255,0.7)"
                   />
                 </Pressable>
+              ) : (
+                <View style={{ width: 24 }} />
+              )}
+              <Pressable
+                onPress={() => {
+                  if (!isCurrentMonth) {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                    setViewYear(now.getFullYear());
+                    setViewMonth(now.getMonth());
+                    setSelectedDay(null);
+                  }
+                }}
+              >
+                <Text className="text-xl font-extrabold text-white">
+                  {MONTH_NAMES_FULL[viewMonth]} {viewYear}
+                </Text>
+              </Pressable>
+              {canGoNext ? (
+                <Pressable onPress={goToNextMonth} hitSlop={16}>
+                  <Ionicons
+                    name="chevron-forward"
+                    size={24}
+                    color="rgba(255,255,255,0.7)"
+                  />
+                </Pressable>
+              ) : (
+                <View style={{ width: 24 }} />
+              )}
+            </View>
+
+            {/* ── Calendar grid ── */}
+            <View className="w-full" style={{ paddingHorizontal: gridPadding - 16 }}>
+              {/* Weekday headers */}
+              <View className="flex-row justify-between mb-2">
+                {WEEKDAY_LABELS.map((label, i) => (
+                  <Text
+                    key={i}
+                    className={`text-center text-sm font-extrabold text-white-40 ${
+                      isCurrentMonth && i === currentWeekday ? "text-accent" : ""
+                    }`}
+                    style={{ width: circleSize }}
+                  >
+                    {label}
+                  </Text>
+                ))}
+              </View>
+
+              {/* Day rows */}
+              {rows.map((row, ri) => (
+                <View key={ri} className="flex-row justify-between mb-1.5">
+                  {row.map((cell) => (
+                    <Pressable
+                      key={cell.key}
+                      onPress={() => {
+                        if (!cell.isFuture && cell.isCurrentMonth) {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                          if (selectedDay?.key === cell.key) {
+                            // Deselecting goes back to today
+                            setSelectedDay(todayCell);
+                          } else {
+                            setSelectedDay(cell);
+                          }
+                        }
+                      }}
+                    >
+                      <DayCircle
+                        size={circleSize}
+                        minutes={cell.isCurrentMonth ? cell.minutes : 0}
+                        isToday={cell.isToday}
+                        isFuture={cell.isFuture}
+                        isCurrentMonth={cell.isCurrentMonth}
+                        isSelected={selectedDay?.key === cell.key}
+                      />
+                    </Pressable>
+                  ))}
+                </View>
               ))}
             </View>
-          ))}
+          </BlurView>
         </View>
       </View>
-    </LinearGradient>
+    </Background>
   );
 }
-
-const styles = StyleSheet.create({
-  fill: {
-    flex: 1,
-  },
-  screen: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "flex-end",
-  },
-
-  /* ── Spacer pushes content to bottom ── */
-  spacer: {
-    flex: 1,
-  },
-
-  /* ── Header (info section above calendar) ── */
-  header: {
-    alignItems: "flex-start",
-    width: "100%",
-    paddingHorizontal: 28,
-    marginBottom: 60,
-  },
-  bigTime: {
-    fontSize: 64,
-    fontWeight: "800",
-    color: "#fff",
-    letterSpacing: -2,
-    marginBottom: 4,
-  },
-  dateRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    width: "100%",
-  },
-  dateText: {
-    fontSize: 20,
-    fontWeight: "600",
-    color: "rgba(255,255,255,0.7)",
-    lineHeight: 26,
-  },
-  yearText: {
-    fontSize: 16,
-    fontWeight: "500",
-    color: "rgba(255,255,255,0.4)",
-  },
-  dayName: {
-    fontSize: 20,
-    fontWeight: "600",
-    color: "rgba(255,255,255,0.7)",
-  },
-
-  /* ── Month navigation ── */
-  monthNav: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    width: "100%",
-    paddingHorizontal: 28,
-    marginBottom: 16,
-  },
-  monthTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#fff",
-  },
-
-  /* ── Grid ── */
-  gridContainer: {
-    width: "100%",
-  },
-  weekdayRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 8,
-  },
-  weekdayLabel: {
-    textAlign: "center",
-    fontSize: 14,
-    fontWeight: "700",
-    color: "rgba(255,255,255,0.4)",
-  },
-  weekdayLabelActive: {
-    color: "#e8602c",
-  },
-  row: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 6,
-  },
-});

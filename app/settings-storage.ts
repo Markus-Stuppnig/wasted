@@ -7,11 +7,17 @@ export interface Settings {
   bedTimeMinutes: number;
   /** Whether anonymous analytics are enabled */
   analyticsEnabled: boolean;
+  /** ISO 8601 timestamp of the first time the app was opened */
+  firstOpenedAt: string | null;
+  /** Whether the onboarding has been completed */
+  onboardingCompleted: boolean;
 }
 
 const DEFAULTS: Settings = {
   bedTimeMinutes: 23 * 60, // 11:00 pm
-  analyticsEnabled: true,
+  analyticsEnabled: false,
+  firstOpenedAt: null,
+  onboardingCompleted: false,
 };
 
 // ── File handle ──
@@ -22,10 +28,19 @@ const file = new File(Paths.document, "wasted-settings.json");
 
 export function loadSettings(): Settings {
   try {
-    if (!file.exists) return { ...DEFAULTS };
+    if (!file.exists) {
+      const settings = { ...DEFAULTS, firstOpenedAt: new Date().toISOString() };
+      saveSettings(settings);
+      return settings;
+    }
     const raw = file.textSync();
     const parsed = JSON.parse(raw);
-    return { ...DEFAULTS, ...parsed };
+    const settings = { ...DEFAULTS, ...parsed };
+    if (!settings.firstOpenedAt) {
+      settings.firstOpenedAt = new Date().toISOString();
+      saveSettings(settings);
+    }
+    return settings;
   } catch {
     return { ...DEFAULTS };
   }

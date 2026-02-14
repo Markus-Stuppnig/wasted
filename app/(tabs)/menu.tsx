@@ -1,26 +1,28 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   StyleSheet,
-  Text,
   View,
   Switch,
   Pressable,
-  Modal,
   ScrollView,
+  Linking,
   AppState,
   type AppStateStatus,
 } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Slider from "@react-native-community/slider";
-// GlassView removed — caused dark background artifacts on re-render
+import { BlurView } from "expo-blur";
 import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
+import { Text } from "../components/Text";
 import {
   loadSettings,
   saveSettings,
   formatBedTime,
   type Settings,
 } from "../settings-storage";
+import Background from "../Background";
+
 
 /**
  * The slider maps a 0→1 range to 7:00 pm (19:00) → 3:00 am (27:00 = next day 03:00).
@@ -64,9 +66,13 @@ export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const [settings, setSettings] = useState<Settings | null>(null);
   const [sliderValue, setSliderValue] = useState(0.5);
-  const [infoVisible, setInfoVisible] = useState(false);
   const [bedTimeTooltip, setBedTimeTooltip] = useState(false);
   const [analyticsTooltip, setAnalyticsTooltip] = useState(false);
+
+  const dismissTooltips = useCallback(() => {
+    setBedTimeTooltip(false);
+    setAnalyticsTooltip(false);
+  }, []);
 
   const load = useCallback(() => {
     const s = loadSettings();
@@ -89,7 +95,7 @@ export default function SettingsScreen() {
     return () => sub.remove();
   }, [load]);
 
-  if (!settings) return null;
+  if (!settings) return <Background><View className="flex-1" /></Background>;
 
   const displayMinutes = sliderToMinutes(sliderValue);
 
@@ -112,101 +118,99 @@ export default function SettingsScreen() {
   };
 
   const handleToggleAnalytics = (value: boolean) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     persist({ ...settings, analyticsEnabled: value });
   };
 
   return (
-    <LinearGradient
-      colors={["#c0cfe0", "#7a92b5", "#3a5278", "#152238", "#0a1628"]}
-      locations={[0, 0.25, 0.5, 0.75, 1]}
-      style={styles.fill}
-    >
+    <Background>
+      <View className="flex-1">
       <ScrollView
-        style={styles.fill}
-        contentContainerStyle={[
-          styles.screen,
-          {
-            paddingTop: insets.top + 24,
-            paddingBottom: insets.bottom + 100,
-          },
-        ]}
+        className="flex-1"
+        contentContainerStyle={{
+          paddingHorizontal: 20,
+          gap: 14,
+          paddingTop: insets.top + 20,
+          paddingBottom: insets.bottom + 100,
+        }}
         showsVerticalScrollIndicator={false}
+        onScrollBeginDrag={dismissTooltips}
       >
-        {/* ── What's Wasted? card ── */}
-        <Pressable onPress={() => setInfoVisible(true)}>
-          <View style={styles.card}>
-            <View style={styles.infoCardContent}>
-              <View style={styles.infoCardLeft}>
-                <Text style={styles.infoCardTitle}>What's Wasted?</Text>
-                <Text style={styles.infoCardSubtitle}>
-                  Tap to learn how the app works
-                </Text>
-              </View>
-              <Ionicons
-                name="chevron-forward"
-                size={22}
-                color="rgba(255,255,255,0.5)"
-              />
-            </View>
-          </View>
-        </Pressable>
-
         {/* ── Bed Time ── */}
-        <View style={styles.cardWrapper}>
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Ionicons
-                name="moon-outline"
-                size={22}
-                color="rgba(255,255,255,0.7)"
-              />
-              <Text style={styles.cardLabel}>Bed Time</Text>
-              <View style={styles.headerSpacer} />
-              <Pressable
-                onPress={() => {
-                  setBedTimeTooltip(!bedTimeTooltip);
-                  setAnalyticsTooltip(false);
-                }}
-                hitSlop={12}
-              >
+        <View className={`relative z-[1] ${bedTimeTooltip ? "z-10" : ""}`}>
+          <View className="rounded-card overflow-hidden">
+            <BlurView
+              className="p-5"
+              tint="systemUltraThinMaterialDark"
+              intensity={30}
+            >
+              <View className="flex-row items-center gap-2.5 mb-3">
                 <Ionicons
-                  name="information-circle-outline"
-                  size={20}
-                  color="rgba(255,255,255,0.4)"
+                  name="moon-outline"
+                  size={22}
+                  color="rgba(255,255,255,0.7)"
                 />
-              </Pressable>
-            </View>
-            <Text style={styles.bedTimeValue}>
-              {formatBedTime(displayMinutes)}
-            </Text>
-            <Text style={styles.bedTimeHint}>
-              Timer stops at this time
-            </Text>
-            <View style={styles.sliderContainer}>
-              <Slider
-                style={styles.slider}
-                minimumValue={0}
-                maximumValue={1}
-                value={sliderValue}
-                onValueChange={handleSliderChange}
-                onSlidingComplete={handleSliderComplete}
-                minimumTrackTintColor="rgba(255,255,255,0.6)"
-                maximumTrackTintColor="rgba(255,255,255,0.2)"
-                thumbTintColor="#fff"
-              />
-              <View style={styles.sliderLabels}>
-                <Text style={styles.sliderLabel}>
-                  {formatFixedTime(SLIDER_MIN_MINUTES)}
-                </Text>
-                <Text style={styles.sliderLabel}>
-                  {formatFixedTime(SLIDER_MAX_MINUTES % 1440)}
-                </Text>
+                <Text className="text-lg font-extrabold text-white">Bed Time</Text>
+                <View className="flex-1" />
+                <Pressable
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                    setBedTimeTooltip(!bedTimeTooltip);
+                    setAnalyticsTooltip(false);
+                  }}
+                  hitSlop={12}
+                >
+                  <Ionicons
+                    name="information-circle-outline"
+                    size={20}
+                    color="rgba(255,255,255,0.4)"
+                  />
+                </Pressable>
               </View>
-            </View>
+              <Text className="text-3xl-plus font-extrabold text-white mb-0.5">
+                {formatBedTime(displayMinutes)}
+              </Text>
+              <Text className="text-xs font-semibold text-white-40 mb-4">
+                Timer stops at this time
+              </Text>
+              <View className="mt-1">
+                <Slider
+                  style={{ width: "100%", height: 40 }}
+                  minimumValue={0}
+                  maximumValue={1}
+                  value={sliderValue}
+                  onValueChange={handleSliderChange}
+                  onSlidingComplete={handleSliderComplete}
+                  minimumTrackTintColor="rgba(255,255,255,0.6)"
+                  maximumTrackTintColor="rgba(255,255,255,0.2)"
+                  thumbTintColor="#fff"
+                />
+                <View className="flex-row justify-between px-1 -mt-0.5">
+                  <Text className="text-xs font-bold text-white-40">
+                    {formatFixedTime(SLIDER_MIN_MINUTES)}
+                  </Text>
+                  <Text className="text-xs font-bold text-white-40">
+                    {formatFixedTime(SLIDER_MAX_MINUTES % 1440)}
+                  </Text>
+                </View>
+              </View>
+            </BlurView>
           </View>
           {bedTimeTooltip && (
-            <View style={styles.tooltipOverlay}>
-              <Text style={styles.tooltipText}>
+            <View
+              className="absolute top-full left-3 right-3 mt-1.5 bg-tooltip-bg rounded-xl p-3 z-10"
+              style={{
+                shadowColor: "#000",
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.3,
+                shadowRadius: 8,
+                elevation: 8,
+              }}
+            >
+              <Text
+                className="text-xs font-semibold leading-[19px]"
+                style={{ color: "rgba(255,255,255,0.85)" }}
+              >
                 The timer will automatically stop tracking at your bed time.
                 This prevents overnight sessions from inflating your data.
               </Text>
@@ -215,50 +219,70 @@ export default function SettingsScreen() {
         </View>
 
         {/* ── Analytics ── */}
-        <View style={styles.cardWrapper}>
-          <View style={styles.card}>
-            <View style={styles.toggleRow}>
-              <View style={styles.toggleLeft}>
-                <Ionicons
-                  name="analytics-outline"
-                  size={22}
-                  color="rgba(255,255,255,0.7)"
-                />
-                <View style={styles.toggleTextGroup}>
-                  <Text style={styles.cardLabel}>Analytics</Text>
-                  <Text style={styles.toggleDescription}>
-                    Anonymous usage data
-                  </Text>
+        <View className={`relative z-[1] ${analyticsTooltip ? "z-10" : ""}`}>
+          <View className="rounded-card overflow-hidden">
+            <BlurView
+              className="p-5"
+              tint="systemUltraThinMaterialDark"
+              intensity={30}
+            >
+              <View className="flex-row items-center justify-between">
+                <View className="flex-row items-center gap-2.5 flex-1 mr-2">
+                  <Ionicons
+                    name="analytics-outline"
+                    size={22}
+                    color="rgba(255,255,255,0.7)"
+                  />
+                  <View className="flex-1">
+                    <Text className="text-lg font-extrabold text-white">Analytics</Text>
+                    <Text className="text-xs font-semibold text-white-40 mt-0.5">
+                      Anonymous usage data
+                    </Text>
+                  </View>
                 </View>
-              </View>
-              <Pressable
-                onPress={() => {
-                  setAnalyticsTooltip(!analyticsTooltip);
-                  setBedTimeTooltip(false);
-                }}
-                hitSlop={12}
-                style={styles.infoIconBtn}
-              >
-                <Ionicons
-                  name="information-circle-outline"
-                  size={20}
-                  color="rgba(255,255,255,0.4)"
+                <Pressable
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                    setAnalyticsTooltip(!analyticsTooltip);
+                    setBedTimeTooltip(false);
+                  }}
+                  hitSlop={12}
+                  className="mr-3"
+                >
+                  <Ionicons
+                    name="information-circle-outline"
+                    size={20}
+                    color="rgba(255,255,255,0.4)"
+                  />
+                </Pressable>
+                <Switch
+                  value={settings.analyticsEnabled}
+                  onValueChange={handleToggleAnalytics}
+                  trackColor={{
+                    false: "rgba(255,255,255,0.15)",
+                    true: "rgba(255,255,255,0.45)",
+                  }}
+                  thumbColor="#fff"
+                  style={{ alignSelf: "center" }}
                 />
-              </Pressable>
-              <Switch
-                value={settings.analyticsEnabled}
-                onValueChange={handleToggleAnalytics}
-                trackColor={{
-                  false: "rgba(255,255,255,0.15)",
-                  true: "rgba(255,255,255,0.45)",
-                }}
-                thumbColor="#fff"
-              />
-            </View>
+              </View>
+            </BlurView>
           </View>
           {analyticsTooltip && (
-            <View style={styles.tooltipOverlay}>
-              <Text style={styles.tooltipText}>
+            <View
+              className="absolute top-full left-3 right-3 mt-1.5 bg-tooltip-bg rounded-xl p-3 z-10"
+              style={{
+                shadowColor: "#000",
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.3,
+                shadowRadius: 8,
+                elevation: 8,
+              }}
+            >
+              <Text
+                className="text-xs font-semibold leading-[19px]"
+                style={{ color: "rgba(255,255,255,0.85)" }}
+              >
                 We only collect anonymous data like app opens, session
                 durations, and crash reports. No personal information,
                 no tracking IDs, no data sold to third parties. Ever.
@@ -267,383 +291,101 @@ export default function SettingsScreen() {
           )}
         </View>
 
-        {/* ── Widgets info ── */}
-        <View style={styles.card}>
-          <View style={styles.infoCardContent}>
-            <View style={styles.widgetInfoLeft}>
-              <Ionicons
-                name="grid-outline"
-                size={22}
-                color="rgba(255,255,255,0.7)"
-              />
-              <View style={styles.toggleTextGroup}>
-                <Text style={styles.cardLabel}>Widgets</Text>
-                <Text style={styles.toggleDescription}>
-                  Add a home screen widget to track time at a glance
-                </Text>
+        {/* ── What's Wasted? card ── */}
+        <View className="rounded-card overflow-hidden">
+          <BlurView
+            className="p-5"
+            tint="systemUltraThinMaterialDark"
+            intensity={30}
+          >
+            <Text className="text-xl font-extrabold text-white">What's Wasted?</Text>
+            <Text className="text-sm font-semibold text-white-50 mt-1 leading-[20px]">
+              A screen time awareness app. No restrictions, no judgement — just honest data about how you spend your time.
+            </Text>
+
+            <View className="mt-4 gap-3">
+              <View className="flex-row items-start gap-3">
+                <View className="w-[30px] h-[30px] rounded-full bg-white-08 items-center justify-center mt-0.5">
+                  <Ionicons name="swap-vertical" size={15} color="rgba(255,255,255,0.5)" />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-sm font-bold text-white">Swipe to track</Text>
+                  <Text className="text-xs font-medium text-white-40 mt-0.5 leading-[17px]">
+                    Swipe up when you start wasting time, swipe down when you stop.
+                  </Text>
+                </View>
+              </View>
+
+              <View className="flex-row items-start gap-3">
+                <View className="w-[30px] h-[30px] rounded-full bg-white-08 items-center justify-center mt-0.5">
+                  <Ionicons name="calendar-outline" size={15} color="rgba(255,255,255,0.5)" />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-sm font-bold text-white">See your patterns</Text>
+                  <Text className="text-xs font-medium text-white-40 mt-0.5 leading-[17px]">
+                    The calendar shows daily progress rings so you can spot trends over time.
+                  </Text>
+                </View>
+              </View>
+
+              <View className="flex-row items-start gap-3">
+                <View className="w-[30px] h-[30px] rounded-full bg-white-08 items-center justify-center mt-0.5">
+                  <Ionicons name="lock-closed-outline" size={15} color="rgba(255,255,255,0.5)" />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-sm font-bold text-white">Completely private</Text>
+                  <Text className="text-xs font-medium text-white-40 mt-0.5 leading-[17px]">
+                    All data stays on your device. No accounts, no cloud, no tracking.
+                  </Text>
+                </View>
               </View>
             </View>
-            <Ionicons
-              name="open-outline"
-              size={18}
-              color="rgba(255,255,255,0.35)"
-            />
-          </View>
+          </BlurView>
         </View>
+
+        {/* ── Widgets info ── */}
+        <Pressable
+          className="rounded-card overflow-hidden"
+          onPress={() => Linking.openURL("https://support.apple.com/en-us/118610")}
+        >
+          <BlurView
+            className="p-5"
+            tint="systemUltraThinMaterialDark"
+            intensity={30}
+          >
+            <View className="flex-row items-center justify-between gap-3">
+              <View className="flex-row items-center gap-2.5 flex-1">
+                <Ionicons
+                  name="grid-outline"
+                  size={22}
+                  color="rgba(255,255,255,0.7)"
+                />
+                <View className="flex-1">
+                  <Text className="text-lg font-extrabold text-white">Widgets</Text>
+                  <Text className="text-xs font-semibold text-white-40 mt-0.5">
+                    Learn how to add widgets to your home screen
+                  </Text>
+                </View>
+              </View>
+              <Ionicons
+                name="open-outline"
+                size={18}
+                color="rgba(255,255,255,0.35)"
+              />
+            </View>
+          </BlurView>
+        </Pressable>
       </ScrollView>
 
-      {/* ── Info Bottom Sheet ── */}
-      <Modal
-        visible={infoVisible}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setInfoVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View
-            style={[
-              styles.modalSheet,
-              { paddingBottom: 0 },
-            ]}
-          >
-            <LinearGradient
-              colors={["#2a4a72", "#1a3355", "#0e1f3a"]}
-              locations={[0, 0.5, 1]}
-              style={styles.modalGradient}
-            >
-              {/* Close button */}
-              <View style={styles.modalHeader}>
-                <View style={styles.modalHeaderSpacer} />
-                <Pressable
-                  onPress={() => setInfoVisible(false)}
-                  hitSlop={16}
-                  style={({ pressed }) => [
-                    styles.closeButton,
-                    pressed && styles.closeButtonPressed,
-                  ]}
-                >
-                  <Ionicons name="close" size={20} color="#fff" />
-                </Pressable>
-              </View>
+      {/* ── Tooltip dismiss overlay ── */}
+      {(bedTimeTooltip || analyticsTooltip) && (
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={dismissTooltips}
+        />
+      )}
 
-              <ScrollView
-                style={styles.modalScroll}
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={styles.modalContent}
-              >
-                <Text style={styles.modalTitle}>
-                  Welcome to Wasted
-                </Text>
-                <Text style={styles.modalEmoji}>⏱</Text>
-
-                <Text style={styles.modalText}>
-                  Wasted helps you become more aware of how you spend your
-                  screen time — not by restricting you, but by showing you
-                  the truth.
-                </Text>
-
-                <Text style={styles.modalText}>
-                  Whenever you catch yourself mindlessly scrolling, just
-                  swipe the pill up to start tracking. When you put your
-                  phone down, swipe it back. It's that simple.
-                </Text>
-
-                <Text style={styles.modalText}>
-                  Over time, you'll build a picture of your habits on the
-                  calendar. There's no judgement here — just honest data
-                  to help you make better choices.
-                </Text>
-
-                <View style={styles.modalFeatures}>
-                  <View style={styles.featureRow}>
-                    <Ionicons
-                      name="time-outline"
-                      size={20}
-                      color="rgba(255,255,255,0.7)"
-                    />
-                    <Text style={styles.featureText}>
-                      Track wasted time with a simple swipe
-                    </Text>
-                  </View>
-                  <View style={styles.featureRow}>
-                    <Ionicons
-                      name="calendar-outline"
-                      size={20}
-                      color="rgba(255,255,255,0.7)"
-                    />
-                    <Text style={styles.featureText}>
-                      Review your habits on the calendar
-                    </Text>
-                  </View>
-                  <View style={styles.featureRow}>
-                    <Ionicons
-                      name="moon-outline"
-                      size={20}
-                      color="rgba(255,255,255,0.7)"
-                    />
-                    <Text style={styles.featureText}>
-                      Set a bed time to auto-stop tracking
-                    </Text>
-                  </View>
-                  <View style={styles.featureRow}>
-                    <Ionicons
-                      name="hand-left-outline"
-                      size={20}
-                      color="rgba(255,255,255,0.7)"
-                    />
-                    <Text style={styles.featureText}>
-                      No judgement — just awareness
-                    </Text>
-                  </View>
-                </View>
-
-                <Text style={styles.modalFooter}>
-                  Your data stays on your device. Always.
-                </Text>
-              </ScrollView>
-            </LinearGradient>
-          </View>
-        </View>
-      </Modal>
-    </LinearGradient>
+      </View>
+    </Background>
   );
 }
-
-const styles = StyleSheet.create({
-  fill: {
-    flex: 1,
-  },
-  screen: {
-    paddingHorizontal: 20,
-    gap: 14,
-  },
-
-  /* ── Cards ── */
-  card: {
-    borderRadius: 22,
-    padding: 20,
-    overflow: "hidden",
-    backgroundColor: "rgba(255,255,255,0.12)",
-  },
-
-  /* ── Info card ── */
-  infoCardContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-  infoCardLeft: {
-    flex: 1,
-  },
-  infoCardTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#fff",
-  },
-  infoCardSubtitle: {
-    fontSize: 14,
-    fontWeight: "400",
-    color: "rgba(255,255,255,0.5)",
-    marginTop: 2,
-  },
-
-  /* ── Card shared ── */
-  cardHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginBottom: 12,
-  },
-  headerSpacer: {
-    flex: 1,
-  },
-  cardLabel: {
-    fontSize: 17,
-    fontWeight: "600",
-    color: "#fff",
-  },
-
-  /* ── Card wrapper (for tooltip positioning) ── */
-  cardWrapper: {
-    position: "relative",
-    zIndex: 1,
-  },
-
-  /* ── Tooltips ── */
-  tooltipOverlay: {
-    position: "absolute",
-    top: "100%",
-    left: 12,
-    right: 12,
-    marginTop: 6,
-    backgroundColor: "rgba(30,50,80,1.0)",
-    borderRadius: 12,
-    padding: 12,
-    zIndex: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  tooltipText: {
-    fontSize: 13,
-    fontWeight: "400",
-    color: "rgba(255,255,255,0.85)",
-    lineHeight: 19,
-  },
-
-  /* ── Bed Time ── */
-  bedTimeValue: {
-    fontSize: 38,
-    fontWeight: "800",
-    color: "#fff",
-    marginBottom: 2,
-  },
-  bedTimeHint: {
-    fontSize: 13,
-    fontWeight: "400",
-    color: "rgba(255,255,255,0.4)",
-    marginBottom: 16,
-  },
-  sliderContainer: {
-    marginTop: 4,
-  },
-  slider: {
-    width: "100%",
-    height: 40,
-  },
-  sliderLabels: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingHorizontal: 4,
-    marginTop: -2,
-  },
-  sliderLabel: {
-    fontSize: 13,
-    fontWeight: "500",
-    color: "rgba(255,255,255,0.4)",
-  },
-
-  /* ── Toggle ── */
-  toggleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  toggleLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    flex: 1,
-    marginRight: 8,
-  },
-  toggleTextGroup: {
-    flex: 1,
-  },
-  toggleDescription: {
-    fontSize: 13,
-    fontWeight: "400",
-    color: "rgba(255,255,255,0.4)",
-    marginTop: 2,
-  },
-  infoIconBtn: {
-    marginRight: 12,
-  },
-
-  /* ── Widgets ── */
-  widgetInfoLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    flex: 1,
-  },
-
-  /* ── Modal ── */
-  modalOverlay: {
-    flex: 1,
-    justifyContent: "flex-end",
-    backgroundColor: "rgba(0,0,0,0.4)",
-  },
-  modalSheet: {
-    height: "88%",
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    overflow: "hidden",
-  },
-  modalGradient: {
-    flex: 1,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-  },
-  modalHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 8,
-  },
-  modalHeaderSpacer: {
-    flex: 1,
-  },
-  closeButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "rgba(255,255,255,0.15)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  closeButtonPressed: {
-    opacity: 0.6,
-  },
-  modalScroll: {
-    flex: 1,
-  },
-  modalContent: {
-    paddingHorizontal: 28,
-    paddingBottom: 40,
-  },
-  modalTitle: {
-    fontSize: 32,
-    fontWeight: "800",
-    color: "#fff",
-    marginBottom: 8,
-  },
-  modalEmoji: {
-    fontSize: 48,
-    marginBottom: 24,
-  },
-  modalText: {
-    fontSize: 17,
-    fontWeight: "400",
-    color: "rgba(255,255,255,0.75)",
-    lineHeight: 26,
-    marginBottom: 16,
-  },
-  modalFeatures: {
-    marginTop: 12,
-    marginBottom: 24,
-    gap: 16,
-  },
-  featureRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  featureText: {
-    fontSize: 16,
-    fontWeight: "500",
-    color: "rgba(255,255,255,0.7)",
-    flex: 1,
-  },
-  modalFooter: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "rgba(255,255,255,0.35)",
-    textAlign: "center",
-    marginTop: 8,
-  },
-});

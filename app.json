@@ -7,6 +7,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
+    "backgroundColor": "#0a1628",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
@@ -15,7 +16,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.markusstuppnig.v2"
+      "bundleIdentifier": "com.markusstuppnig.wasted"
     },
     "android": {
       "adaptiveIcon": {
@@ -29,7 +30,9 @@
       "android"
     ],
     "plugins": [
-      "expo-router"
+      "expo-router",
+      "expo-font",
+      "expo-system-ui"
     ]
   }
 }

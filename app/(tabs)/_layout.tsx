@@ -6,7 +6,15 @@ import { Ionicons } from "@expo/vector-icons";
 export default function TabLayout() {
   if (Platform.OS === "ios") {
     return (
-      <NativeTabs>
+      <NativeTabs
+        sidebarAdaptable={false}
+        tintColor="#ffffff"
+        iconColor={{ default: "rgba(255,255,255,0.35)", selected: "#ffffff" }}
+        labelStyle={{
+          default: { color: "rgba(255,255,255,0.35)" },
+          selected: { color: "#ffffff" },
+        }}
+      >
         <NativeTabs.Trigger name="index">
           <Label>Home</Label>
           <Icon sf={{ default: "house", selected: "house.fill" }} />
