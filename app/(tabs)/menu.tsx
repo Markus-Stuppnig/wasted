@@ -1,12 +1,12 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
-  StyleSheet,
   View,
   Switch,
   Pressable,
   ScrollView,
   Linking,
   AppState,
+  Animated,
   type AppStateStatus,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -23,6 +23,36 @@ import {
 } from "../settings-storage";
 import Background from "../Background";
 
+/** Animated inline tooltip component */
+function InlineTooltip({ visible, children }: { visible: boolean; children: React.ReactNode }) {
+  const anim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(anim, {
+      toValue: visible ? 1 : 0,
+      duration: 200,
+      useNativeDriver: false,
+    }).start();
+  }, [visible]);
+
+  const maxHeight = anim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 150],
+  });
+
+  return (
+    <Animated.View style={{ maxHeight, opacity: anim, overflow: "hidden" }}>
+      <View className="mt-3 pt-3" style={{ borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.08)" }}>
+        <Text
+          className="text-xs font-semibold leading-[19px]"
+          style={{ color: "rgba(255,255,255,0.6)" }}
+        >
+          {children}
+        </Text>
+      </View>
+    </Animated.View>
+  );
+}
 
 /**
  * The slider maps a 0→1 range to 7:00 pm (19:00) → 3:00 am (27:00 = next day 03:00).
@@ -68,11 +98,6 @@ export default function SettingsScreen() {
   const [sliderValue, setSliderValue] = useState(0.5);
   const [bedTimeTooltip, setBedTimeTooltip] = useState(false);
   const [analyticsTooltip, setAnalyticsTooltip] = useState(false);
-
-  const dismissTooltips = useCallback(() => {
-    setBedTimeTooltip(false);
-    setAnalyticsTooltip(false);
-  }, []);
 
   const load = useCallback(() => {
     const s = loadSettings();
@@ -134,161 +159,124 @@ export default function SettingsScreen() {
           paddingBottom: insets.bottom + 100,
         }}
         showsVerticalScrollIndicator={false}
-        onScrollBeginDrag={dismissTooltips}
       >
         {/* ── Bed Time ── */}
-        <View className={`relative z-[1] ${bedTimeTooltip ? "z-10" : ""}`}>
-          <View className="rounded-card overflow-hidden">
-            <BlurView
-              className="p-5"
-              tint="systemUltraThinMaterialDark"
-              intensity={30}
-            >
-              <View className="flex-row items-center gap-2.5 mb-3">
-                <Ionicons
-                  name="moon-outline"
-                  size={22}
-                  color="rgba(255,255,255,0.7)"
-                />
-                <Text className="text-lg font-extrabold text-white">Bed Time</Text>
-                <View className="flex-1" />
-                <Pressable
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-                    setBedTimeTooltip(!bedTimeTooltip);
-                    setAnalyticsTooltip(false);
-                  }}
-                  hitSlop={12}
-                >
-                  <Ionicons
-                    name="information-circle-outline"
-                    size={20}
-                    color="rgba(255,255,255,0.4)"
-                  />
-                </Pressable>
-              </View>
-              <Text className="text-3xl-plus font-extrabold text-white mb-0.5">
-                {formatBedTime(displayMinutes)}
-              </Text>
-              <Text className="text-xs font-semibold text-white-40 mb-4">
-                Timer stops at this time
-              </Text>
-              <View className="mt-1">
-                <Slider
-                  style={{ width: "100%", height: 40 }}
-                  minimumValue={0}
-                  maximumValue={1}
-                  value={sliderValue}
-                  onValueChange={handleSliderChange}
-                  onSlidingComplete={handleSliderComplete}
-                  minimumTrackTintColor="rgba(255,255,255,0.6)"
-                  maximumTrackTintColor="rgba(255,255,255,0.2)"
-                  thumbTintColor="#fff"
-                />
-                <View className="flex-row justify-between px-1 -mt-0.5">
-                  <Text className="text-xs font-bold text-white-40">
-                    {formatFixedTime(SLIDER_MIN_MINUTES)}
-                  </Text>
-                  <Text className="text-xs font-bold text-white-40">
-                    {formatFixedTime(SLIDER_MAX_MINUTES % 1440)}
-                  </Text>
-                </View>
-              </View>
-            </BlurView>
-          </View>
-          {bedTimeTooltip && (
-            <View
-              className="absolute top-full left-3 right-3 mt-1.5 bg-tooltip-bg rounded-xl p-3 z-10"
-              style={{
-                shadowColor: "#000",
-                shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.3,
-                shadowRadius: 8,
-                elevation: 8,
-              }}
-            >
-              <Text
-                className="text-xs font-semibold leading-[19px]"
-                style={{ color: "rgba(255,255,255,0.85)" }}
+        <View className="rounded-card overflow-hidden">
+          <BlurView
+            className="p-5"
+            tint="systemUltraThinMaterialDark"
+            intensity={30}
+          >
+            <View className="flex-row items-center gap-2.5 mb-3">
+              <Ionicons
+                name="moon-outline"
+                size={22}
+                color="rgba(255,255,255,0.7)"
+              />
+              <Text className="text-lg font-extrabold text-white">Bed Time</Text>
+              <View className="flex-1" />
+              <Pressable
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setBedTimeTooltip(!bedTimeTooltip);
+                  setAnalyticsTooltip(false);
+                }}
+                hitSlop={12}
               >
-                The timer will automatically stop tracking at your bed time.
-                This prevents overnight sessions from inflating your data.
-              </Text>
+                <Ionicons
+                  name="information-circle-outline"
+                  size={20}
+                  color={bedTimeTooltip ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.4)"}
+                />
+              </Pressable>
             </View>
-          )}
+            <Text className="text-3xl-plus font-extrabold text-white mb-0.5">
+              {formatBedTime(displayMinutes)}
+            </Text>
+            <Text className="text-xs font-semibold text-white-40 mb-4">
+              Timer stops at this time
+            </Text>
+            <View className="mt-1">
+              <Slider
+                style={{ width: "100%", height: 40 }}
+                minimumValue={0}
+                maximumValue={1}
+                value={sliderValue}
+                onValueChange={handleSliderChange}
+                onSlidingComplete={handleSliderComplete}
+                minimumTrackTintColor="rgba(255,255,255,0.6)"
+                maximumTrackTintColor="rgba(255,255,255,0.2)"
+                thumbTintColor="#fff"
+              />
+              <View className="flex-row justify-between px-1 -mt-0.5">
+                <Text className="text-xs font-bold text-white-40">
+                  {formatFixedTime(SLIDER_MIN_MINUTES)}
+                </Text>
+                <Text className="text-xs font-bold text-white-40">
+                  {formatFixedTime(SLIDER_MAX_MINUTES % 1440)}
+                </Text>
+              </View>
+            </View>
+            <InlineTooltip visible={bedTimeTooltip}>
+              The timer will automatically stop tracking at your bed time.
+              This prevents overnight sessions from inflating your data.
+            </InlineTooltip>
+          </BlurView>
         </View>
 
         {/* ── Analytics ── */}
-        <View className={`relative z-[1] ${analyticsTooltip ? "z-10" : ""}`}>
-          <View className="rounded-card overflow-hidden">
-            <BlurView
-              className="p-5"
-              tint="systemUltraThinMaterialDark"
-              intensity={30}
-            >
-              <View className="flex-row items-center justify-between">
-                <View className="flex-row items-center gap-2.5 flex-1 mr-2">
-                  <Ionicons
-                    name="analytics-outline"
-                    size={22}
-                    color="rgba(255,255,255,0.7)"
-                  />
-                  <View className="flex-1">
-                    <Text className="text-lg font-extrabold text-white">Analytics</Text>
-                    <Text className="text-xs font-semibold text-white-40 mt-0.5">
-                      Anonymous usage data
-                    </Text>
-                  </View>
-                </View>
-                <Pressable
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-                    setAnalyticsTooltip(!analyticsTooltip);
-                    setBedTimeTooltip(false);
-                  }}
-                  hitSlop={12}
-                  className="mr-3"
-                >
-                  <Ionicons
-                    name="information-circle-outline"
-                    size={20}
-                    color="rgba(255,255,255,0.4)"
-                  />
-                </Pressable>
-                <Switch
-                  value={settings.analyticsEnabled}
-                  onValueChange={handleToggleAnalytics}
-                  trackColor={{
-                    false: "rgba(255,255,255,0.15)",
-                    true: "rgba(255,255,255,0.45)",
-                  }}
-                  thumbColor="#fff"
-                  style={{ alignSelf: "center" }}
+        <View className="rounded-card overflow-hidden">
+          <BlurView
+            className="p-5"
+            tint="systemUltraThinMaterialDark"
+            intensity={30}
+          >
+            <View className="flex-row items-center justify-between">
+              <View className="flex-row items-center gap-2.5 flex-1 mr-2">
+                <Ionicons
+                  name="analytics-outline"
+                  size={22}
+                  color="rgba(255,255,255,0.7)"
                 />
+                <View className="flex-1">
+                  <Text className="text-lg font-extrabold text-white">Analytics</Text>
+                  <Text className="text-xs font-semibold text-white-40 mt-0.5">
+                    Anonymous usage data
+                  </Text>
+                </View>
               </View>
-            </BlurView>
-          </View>
-          {analyticsTooltip && (
-            <View
-              className="absolute top-full left-3 right-3 mt-1.5 bg-tooltip-bg rounded-xl p-3 z-10"
-              style={{
-                shadowColor: "#000",
-                shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.3,
-                shadowRadius: 8,
-                elevation: 8,
-              }}
-            >
-              <Text
-                className="text-xs font-semibold leading-[19px]"
-                style={{ color: "rgba(255,255,255,0.85)" }}
+              <Pressable
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setAnalyticsTooltip(!analyticsTooltip);
+                  setBedTimeTooltip(false);
+                }}
+                hitSlop={12}
+                className="mr-3"
               >
-                We only collect anonymous data like app opens, session
-                durations, and crash reports. No personal information,
-                no tracking IDs, no data sold to third parties. Ever.
-              </Text>
+                <Ionicons
+                  name="information-circle-outline"
+                  size={20}
+                  color={analyticsTooltip ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.4)"}
+                />
+              </Pressable>
+              <Switch
+                value={settings.analyticsEnabled}
+                onValueChange={handleToggleAnalytics}
+                trackColor={{
+                  false: "rgba(255,255,255,0.15)",
+                  true: "rgba(255,255,255,0.45)",
+                }}
+                thumbColor="#fff"
+                style={{ alignSelf: "center" }}
+              />
             </View>
-          )}
+            <InlineTooltip visible={analyticsTooltip}>
+              We only collect anonymous data like app opens, session
+              durations, and crash reports. No personal information,
+              no tracking IDs, no data sold to third parties. Ever.
+            </InlineTooltip>
+          </BlurView>
         </View>
 
         {/* ── What's Wasted? card ── */}
@@ -376,15 +364,6 @@ export default function SettingsScreen() {
           </BlurView>
         </Pressable>
       </ScrollView>
-
-      {/* ── Tooltip dismiss overlay ── */}
-      {(bedTimeTooltip || analyticsTooltip) && (
-        <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={dismissTooltips}
-        />
-      )}
-
       </View>
     </Background>
   );

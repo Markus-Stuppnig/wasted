@@ -39,7 +39,7 @@ const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const CARD_WIDTH = SCREEN_WIDTH * 0.82;
 
 const MAX_MINUTES = 24 * 60;
-const INNER_PADDING = 8;
+const INNER_PADDING = 20;
 
 function formatTimeMs(totalMs: number): string {
   const totalSeconds = Math.floor(totalMs / 1000);
@@ -371,7 +371,7 @@ export default function HomeScreen() {
         </View>
 
         {/* ── Outer static glass card ── */}
-        <View style={{ flex: 1, width: CARD_WIDTH, maxHeight: 180, marginTop: "auto", marginBottom: 60 }}>
+        <View style={{ flex: 1, width: CARD_WIDTH, maxHeight: 240, marginTop: "auto", marginBottom: 40 }}>
           <Animated.View
             className="flex-1 rounded-card-lg"
             style={{
@@ -443,7 +443,7 @@ export default function HomeScreen() {
                       style={{ transform: [{ translateY: clampedPillY }] }}
                     >
                       <BlurView
-                        className="rounded-card px-10 py-[18px] items-center justify-center w-full overflow-hidden"
+                        className="rounded-card px-10 py-[28px] items-center justify-center w-full overflow-hidden"
                         tint="systemThinMaterialDark"
                         intensity={50}
                       >
