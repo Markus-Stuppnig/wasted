@@ -14,6 +14,7 @@
     "@types/react": "~19.1.10",
     "babel-preset-expo": "^54.0.10",
     "expo": "~54.0.33",
+    "expo-av": "~16.0.8",
     "expo-blur": "~15.0.8",
     "expo-constants": "~18.0.13",
     "expo-file-system": "~19.0.21",
@@ -41,5 +42,8 @@
       "react": "$react"
     }
   },
-  "private": true
+  "private": true,
+  "devDependencies": {
+    "node-wav": "^0.0.2"
+  }
 }

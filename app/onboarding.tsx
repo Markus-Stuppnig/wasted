@@ -6,6 +6,8 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import * as Haptics from "expo-haptics";
+import { playWordPop, playTransition, playComplete } from "./utils/sound-manager";
 import appConfig from "./config.json";
 
 const BG_COLOR = "#fff";
@@ -34,6 +36,8 @@ function AnimatedWord({
 
   useEffect(() => {
     const timer = setTimeout(() => {
+      // Delay sound slightly so it lands when the word is becoming visible
+      setTimeout(playWordPop, 50);
       Animated.parallel([
         Animated.timing(opacity, {
           toValue: 1,
@@ -147,6 +151,13 @@ export default function Onboarding({ onComplete }: Props) {
   const advance = useCallback(() => {
     if (!tapReady || transitioning) return;
     setTransitioning(true);
+
+    if (isLast) {
+      playComplete();
+    } else {
+      playTransition();
+    }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
 
     // Fade out hint
     Animated.timing(hintOpacity, {

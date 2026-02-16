@@ -16,6 +16,7 @@ import { loadSettings, saveSettings } from "./settings-storage";
 import { checkAndStopAtBedTime } from "./storage";
 import Onboarding from "./onboarding";
 import { backgroundSource } from "./Background";
+import { initializeSounds } from "./utils/sound-manager";
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
@@ -38,6 +39,9 @@ export default function RootLayout() {
     // Auto-stop any running session if bed time passed while app was closed
     checkAndStopAtBedTime(settings.bedTimeMinutes);
     setShowOnboarding(!settings.onboardingCompleted);
+    if (!settings.onboardingCompleted) {
+      initializeSounds();
+    }
   }, []);
 
   const handleOnboardingComplete = () => {
