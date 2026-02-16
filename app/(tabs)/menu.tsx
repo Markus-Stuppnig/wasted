@@ -147,9 +147,15 @@ export default function SettingsScreen() {
     persist({ ...settings, analyticsEnabled: value });
   };
 
+  const dismissTooltips = () => {
+    if (bedTimeTooltip || analyticsTooltip) {
+      setBedTimeTooltip(false);
+      setAnalyticsTooltip(false);
+    }
+  };
+
   return (
     <Background>
-      <View className="flex-1">
       <ScrollView
         className="flex-1"
         contentContainerStyle={{
@@ -159,6 +165,7 @@ export default function SettingsScreen() {
           paddingBottom: insets.bottom + 100,
         }}
         showsVerticalScrollIndicator={false}
+        onScrollBeginDrag={dismissTooltips}
       >
         {/* ── Bed Time ── */}
         <View className="rounded-card overflow-hidden">
@@ -363,8 +370,81 @@ export default function SettingsScreen() {
             </View>
           </BlurView>
         </Pressable>
+
+        {/* ── Privacy ── */}
+        <View className="rounded-card overflow-hidden">
+          <BlurView
+            className="p-5"
+            tint="systemUltraThinMaterialDark"
+            intensity={30}
+          >
+            <View className="flex-row items-center gap-2.5 mb-3">
+              <Ionicons
+                name="shield-checkmark-outline"
+                size={22}
+                color="rgba(255,255,255,0.7)"
+              />
+              <Text className="text-lg font-extrabold text-white">Privacy</Text>
+            </View>
+            <View className="gap-2.5">
+              <Text className="text-xs font-semibold text-white-50 leading-[19px]">
+                All your data is stored exclusively on your device. No cloud sync, no accounts, and no data shared with third parties.
+              </Text>
+              <Text className="text-xs font-semibold text-white-50 leading-[19px]">
+                When enabled, anonymous usage data is collected (app opens, session duration, crash reports). This does not contain any personal information.
+              </Text>
+              <Text className="text-xs font-semibold text-white-50 leading-[19px]">
+                You have the right to access, delete, and revoke your data at any time. Complaints can be directed to the Austrian Data Protection Authority (dsb.gv.at).
+              </Text>
+            </View>
+            <Pressable
+              className="flex-row items-center gap-1.5 mt-4"
+              onPress={() => Linking.openURL("https://example.com/wasted/privacy")}
+            >
+              <Text className="text-xs font-bold" style={{ color: "rgba(255,255,255,0.7)" }}>
+                Full Privacy Policy
+              </Text>
+              <Ionicons
+                name="open-outline"
+                size={14}
+                color="rgba(255,255,255,0.5)"
+              />
+            </Pressable>
+          </BlurView>
+        </View>
+
+        {/* ── Legal Notice ── */}
+        <View className="rounded-card overflow-hidden">
+          <BlurView
+            className="p-5"
+            tint="systemUltraThinMaterialDark"
+            intensity={30}
+          >
+            <View className="flex-row items-center gap-2.5 mb-3">
+              <Ionicons
+                name="document-text-outline"
+                size={22}
+                color="rgba(255,255,255,0.7)"
+              />
+              <Text className="text-lg font-extrabold text-white">Legal Notice</Text>
+            </View>
+            <View className="gap-1">
+              <Text className="text-xs font-semibold text-white-50 leading-[19px]">
+                Markus Stuppnig
+              </Text>
+              <Text className="text-xs font-semibold text-white-50 leading-[19px]">
+                [ADDRESS]
+              </Text>
+              <Text className="text-xs font-semibold text-white-50 leading-[19px]">
+                [EMAIL]
+              </Text>
+            </View>
+            <Text className="text-xs font-semibold text-white-40 mt-3 leading-[19px]">
+              Free app, no registered business.
+            </Text>
+          </BlurView>
+        </View>
       </ScrollView>
-      </View>
     </Background>
   );
 }

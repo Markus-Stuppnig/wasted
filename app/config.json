@@ -4,15 +4,11 @@
     "screens": [
       {
         "title": "Welcome to Wasted",
-        "subtitle": "We help you become aware of your time spending habits."
+        "subtitle": "Become aware of how you spend your time"
       },
       {
-        "title": "You define wasted",
-        "subtitle": "You decide what counts toward wasted time."
-      },
-      {
-        "title": "Swipe up. Swipe down.",
-        "subtitle": "Swipe up when you start wasting time. Swipe down when you stop."
+        "title": "Swipe up, swipe down",
+        "subtitle": "You decide what counts as wasted"
       }
     ]
   }

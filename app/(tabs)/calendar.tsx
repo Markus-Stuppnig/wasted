@@ -90,34 +90,20 @@ const DAY_NAMES = [
 
 interface DayCircleProps {
   size: number;
-  minutes: number;
+  ms: number;
   isToday: boolean;
   isFuture: boolean;
   isCurrentMonth: boolean;
   isSelected: boolean;
 }
 
-function DayCircle({ size, minutes, isToday, isFuture, isCurrentMonth, isSelected }: DayCircleProps) {
-  const strokeWidth = size * 0.12;
-  const radius = (size - strokeWidth) / 2;
-  const circumference = 2 * Math.PI * radius;
+function DayCircle({ size, ms, isToday, isFuture, isCurrentMonth, isSelected }: DayCircleProps) {
+  const minutes = ms / 60_000;
 
-  const fraction = Math.min(1, minutes / FULL_DAY_MINUTES);
-  const strokeDashoffset = circumference * (1 - fraction);
+  // Square-root scaling: early minutes fill faster, later minutes slower
+  const fraction = Math.min(1, Math.pow(minutes / FULL_DAY_MINUTES, 0.5));
 
-  // Colors
-  const trackColor = isCurrentMonth
-    ? "rgba(255,255,255,0.12)"
-    : "rgba(255,255,255,0.04)";
   const progressColor = config.accentColor;
-  const filledBg =
-    minutes > 0 && !isFuture
-      ? "rgba(255,255,255,0.08)"
-      : "transparent";
-
-  // Selected ring
-  const selectedBorderWidth = 2;
-  const selectedPadding = 3;
 
   const circle = (() => {
     if (!isCurrentMonth) {
@@ -142,8 +128,8 @@ function DayCircle({ size, minutes, isToday, isFuture, isCurrentMonth, isSelecte
       : "rgba(255,255,255,0.25)";
 
     // Inner progress ring (smaller than base circle)
-    const innerRingSize = size * 0.75;
-    const innerStrokeWidth = innerRingSize * 0.12;
+    const innerRingSize = size * 0.67;
+    const innerStrokeWidth = innerRingSize * 0.18;
     const innerRadius = (innerRingSize - innerStrokeWidth) / 2;
     const innerCircumference = 2 * Math.PI * innerRadius;
     const innerDashoffset = innerCircumference * (1 - fraction);
@@ -185,20 +171,51 @@ function DayCircle({ size, minutes, isToday, isFuture, isCurrentMonth, isSelecte
   })();
 
   if (isSelected) {
-    const outerSize = size + (selectedPadding + selectedBorderWidth) * 2;
     return (
       <View
         style={{
-          width: outerSize,
-          height: outerSize,
+          width: size,
+          height: size,
           alignItems: "center",
           justifyContent: "center",
-          borderRadius: outerSize / 2,
-          borderWidth: selectedBorderWidth,
-          borderColor: "#fff",
-          margin: -(selectedPadding + selectedBorderWidth),
+          overflow: "visible",
         }}
       >
+        <View
+          style={{
+            position: "absolute",
+            width: size + 6,
+            height: size + 6,
+            borderRadius: (size + 6) / 2,
+            backgroundColor: "rgba(255,255,255,0.18)",
+          }}
+        />
+        {circle}
+      </View>
+    );
+  }
+
+  if (isToday && isCurrentMonth) {
+    return (
+      <View
+        style={{
+          width: size,
+          height: size,
+          alignItems: "center",
+          justifyContent: "center",
+          overflow: "visible",
+        }}
+      >
+        <View
+          style={{
+            position: "absolute",
+            width: size + 2,
+            height: size + 2,
+            borderRadius: (size + 2) / 2,
+            borderWidth: 1.5,
+            borderColor: "rgba(255,255,255,0.35)",
+          }}
+        />
         {circle}
       </View>
     );
@@ -217,12 +234,14 @@ interface CalendarDay {
   isToday: boolean;
   isFuture: boolean;
   isCurrentMonth: boolean;
+  isAfterInstall: boolean;
 }
 
 function buildMonth(
   year: number,
   month: number,
   todayStr: string,
+  firstLogDate: string | null,
 ): CalendarDay[] {
   const now = new Date();
   const firstDay = new Date(year, month, 1);
@@ -252,6 +271,7 @@ function buildMonth(
         isToday: key === todayStr,
         isFuture: new Date(prevYear, prevMonth, d) > now,
         isCurrentMonth: false,
+        isAfterInstall: firstLogDate != null && key >= firstLogDate,
       });
     }
   }
@@ -286,6 +306,7 @@ function buildMonth(
       isToday: key === todayStr,
       isFuture,
       isCurrentMonth: true,
+      isAfterInstall: firstLogDate != null && key >= firstLogDate,
     });
   }
 
@@ -306,6 +327,7 @@ function buildMonth(
         isToday: key === todayStr,
         isFuture: true,
         isCurrentMonth: false,
+        isAfterInstall: false,
       });
     }
   }
@@ -345,9 +367,12 @@ export default function CalendarScreen() {
     }, []),
   );
 
+  // Navigation bounds
+  const firstLog = useMemo(() => getFirstLogDate(), [refreshKey]);
+
   const cells = useMemo(
-    () => buildMonth(viewYear, viewMonth, todayStr),
-    [viewYear, viewMonth, refreshKey],
+    () => buildMonth(viewYear, viewMonth, todayStr, firstLog),
+    [viewYear, viewMonth, refreshKey, firstLog],
   );
 
   // Today's entry for the header display
@@ -393,11 +418,13 @@ export default function CalendarScreen() {
       )
     : now;
 
-  // Grid sizing
-  const gridPadding = 24;
-  const gridWidth = SCREEN_WIDTH - gridPadding * 2;
-  const gap = 8;
-  const circleSize = Math.floor((gridWidth - gap * (COL_COUNT - 1)) / COL_COUNT);
+  // Grid sizing — based on actual card width, with enough padding for selection rings
+  const cardWidth = SCREEN_WIDTH - 32;
+  const gridInset = 20; // padding inside the card for the grid
+  const gridWidth = cardWidth - gridInset * 2;
+  const gap = 12;
+  const cellSize = Math.floor((gridWidth - gap * (COL_COUNT - 1)) / COL_COUNT);
+  const circleSize = Math.floor(cellSize * 0.95);
 
   const rows: CalendarDay[][] = [];
   for (let i = 0; i < cells.length; i += COL_COUNT) {
@@ -411,8 +438,6 @@ export default function CalendarScreen() {
   const isCurrentMonth =
     viewYear === now.getFullYear() && viewMonth === now.getMonth();
 
-  // Navigation bounds
-  const firstLog = useMemo(() => getFirstLogDate(), [refreshKey]);
   const firstLogYear = firstLog ? parseInt(firstLog.slice(0, 4)) : now.getFullYear();
   const firstLogMonth = firstLog ? parseInt(firstLog.slice(5, 7)) - 1 : now.getMonth();
 
@@ -489,7 +514,7 @@ export default function CalendarScreen() {
             className="rounded-card-lg overflow-hidden"
             tint="systemUltraThinMaterialDark"
             intensity={30}
-            style={{ paddingVertical: 20 }}
+            style={{ paddingTop: 20, paddingBottom: 28 }}
           >
             {/* ── Month navigation ── */}
             <View className="flex-row items-center justify-between w-full px-7 mb-4">
@@ -532,7 +557,7 @@ export default function CalendarScreen() {
             </View>
 
             {/* ── Calendar grid ── */}
-            <View className="w-full" style={{ paddingHorizontal: gridPadding - 16 }}>
+            <View className="w-full" style={{ paddingHorizontal: gridInset, overflow: "visible" }}>
               {/* Weekday headers */}
               <View className="flex-row justify-between mb-2">
                 {WEEKDAY_LABELS.map((label, i) => (
@@ -541,7 +566,7 @@ export default function CalendarScreen() {
                     className={`text-center text-sm font-extrabold text-white-40 ${
                       isCurrentMonth && i === currentWeekday ? "text-accent" : ""
                     }`}
-                    style={{ width: circleSize }}
+                    style={{ width: cellSize }}
                   >
                     {label}
                   </Text>
@@ -550,25 +575,26 @@ export default function CalendarScreen() {
 
               {/* Day rows */}
               {rows.map((row, ri) => (
-                <View key={ri} className="flex-row justify-between mb-1.5">
+                <View key={ri} className="flex-row justify-between mb-3" style={{ overflow: "visible" }}>
                   {row.map((cell) => (
                     <Pressable
                       key={cell.key}
                       onPress={() => {
-                        if (!cell.isFuture && cell.isCurrentMonth) {
-                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-                          if (selectedDay?.key === cell.key) {
-                            // Deselecting goes back to today
-                            setSelectedDay(todayCell);
-                          } else {
-                            setSelectedDay(cell);
-                          }
+                        if (cell.isFuture || !cell.isCurrentMonth) {
+                          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                          return;
+                        }
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                        if (selectedDay?.key === cell.key) {
+                          setSelectedDay(todayCell);
+                        } else {
+                          setSelectedDay(cell);
                         }
                       }}
                     >
                       <DayCircle
                         size={circleSize}
-                        minutes={cell.isCurrentMonth ? cell.minutes : 0}
+                        ms={cell.isCurrentMonth ? cell.ms : 0}
                         isToday={cell.isToday}
                         isFuture={cell.isFuture}
                         isCurrentMonth={cell.isCurrentMonth}

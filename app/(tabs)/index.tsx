@@ -336,7 +336,7 @@ export default function HomeScreen() {
           <Text
             className="font-bold text-white tracking-tight-2"
             numberOfLines={1}
-            style={{ fontSize: 84, lineHeight: 84 }}
+            style={{ fontSize: 80, lineHeight: 80 }}
           >
             {formatTimeMs(wastedMs)}
           </Text>
@@ -372,37 +372,36 @@ export default function HomeScreen() {
 
         {/* ── Outer static glass card ── */}
         <View style={{ flex: 1, width: CARD_WIDTH, maxHeight: 240, marginTop: "auto", marginBottom: 40 }}>
-          <Animated.View
-            className="flex-1 rounded-card-lg"
-            style={{
-              shadowColor: isWasting ? "#8ab4f8" : "transparent",
-              shadowOffset: { width: 0, height: 0 },
-              shadowOpacity: 0.5,
-              shadowRadius: 20,
-            }}
+          <TapGestureHandler
+            onHandlerStateChange={onTapStateChange}
+            waitFor={panRef}
           >
-            <BlurView
-              className="flex-1 rounded-card-lg items-center justify-center overflow-hidden"
-              tint="systemUltraThinMaterialDark"
-              intensity={30}
-              onLayout={(e: {
-                nativeEvent: { layout: { height: number } };
-              }) => setCardHeight(e.nativeEvent.layout.height)}
+            <Animated.View
+              className="flex-1 rounded-card-lg"
+              style={{
+                shadowColor: isWasting ? "#8ab4f8" : "transparent",
+                shadowOffset: { width: 0, height: 0 },
+                shadowOpacity: 0.5,
+                shadowRadius: 20,
+              }}
             >
-              {/* Shiny border overlay */}
-              <Animated.View
-                className="absolute inset-0 rounded-card-lg border-[1.5px] border-transparent"
-                style={{ borderColor: glowColor }}
-                pointerEvents="none"
-              />
-
-              {/* Swipe hint — tappable */}
-              <Pressable
-                onPress={() => snapTo(!isWastingRef.current)}
-                hitSlop={{ top: 20, bottom: 20, left: 40, right: 40 }}
-                className="px-10 py-4"
+              <BlurView
+                className="flex-1 rounded-card-lg items-center justify-center overflow-hidden"
+                tint="systemUltraThinMaterialDark"
+                intensity={30}
+                onLayout={(e: {
+                  nativeEvent: { layout: { height: number } };
+                }) => setCardHeight(e.nativeEvent.layout.height)}
               >
-                <Animated.View className="items-center" style={{ opacity: arrowOpacity }}>
+                {/* Shiny border overlay */}
+                <Animated.View
+                  className="absolute inset-0 rounded-card-lg border-[1.5px] border-transparent"
+                  style={{ borderColor: glowColor }}
+                  pointerEvents="none"
+                />
+
+                {/* Swipe hint arrow */}
+                <Animated.View className="items-center px-10 py-4" style={{ opacity: arrowOpacity }}>
                   <Animated.View
                     style={{ transform: [{ rotate: arrowRotation }] }}
                   >
@@ -413,13 +412,8 @@ export default function HomeScreen() {
                     />
                   </Animated.View>
                 </Animated.View>
-              </Pressable>
 
-              {/* ── Inner sliding pill ── */}
-              <TapGestureHandler
-                onHandlerStateChange={onTapStateChange}
-                waitFor={panRef}
-              >
+                {/* ── Inner sliding pill ── */}
                 <Animated.View
                   style={{
                     position: "absolute",
@@ -465,9 +459,9 @@ export default function HomeScreen() {
                     </Animated.View>
                   </PanGestureHandler>
                 </Animated.View>
-              </TapGestureHandler>
-            </BlurView>
-          </Animated.View>
+              </BlurView>
+            </Animated.View>
+          </TapGestureHandler>
         </View>
       </View>
     </Background>
