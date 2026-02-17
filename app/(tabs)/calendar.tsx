@@ -8,13 +8,13 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle } from "react-native-svg";
-import { BlurView } from "expo-blur";
+import { GlassView } from "../../components/GlassView";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useFocusEffect } from "expo-router";
-import { getAllDayMinutes, loadToday, getFirstLogDate } from "../storage";
-import { Text } from "../components/Text";
-import config from "../config.json";
+import { getAllDayMinutes, loadToday, getFirstLogDate } from "../../lib/storage";
+import { Text } from "../../components/Text";
+import config from "../../lib/config.json";
 import Background from "../Background";
 
 
@@ -484,7 +484,7 @@ export default function CalendarScreen() {
         <View className="flex-1" />
 
         {/* ── Info: time display ── */}
-        <View className="items-start w-full px-7 mb-[60px]">
+        <View className="items-start w-full px-7 mb-[20px]">
           <Text className="text-hero-sm font-extrabold text-white tracking-tight-2 mb-1">
             {formatTimeMs(displayMs)}
           </Text>
@@ -509,8 +509,8 @@ export default function CalendarScreen() {
         </View>
 
         {/* ── Glass card behind calendar ── */}
-        <View className="w-full rounded-card-lg overflow-hidden" style={{ marginHorizontal: 16, width: SCREEN_WIDTH - 32 }}>
-          <BlurView
+        <View className="w-full rounded-card-lg overflow-hidden" style={{ marginHorizontal: 16, width: SCREEN_WIDTH - 32, marginBottom: 40 }}>
+          <GlassView
             className="rounded-card-lg overflow-hidden"
             tint="systemUltraThinMaterialDark"
             intensity={30}
@@ -605,7 +605,7 @@ export default function CalendarScreen() {
                 </View>
               ))}
             </View>
-          </BlurView>
+          </GlassView>
         </View>
       </View>
     </Background>

@@ -1,4 +1,6 @@
 import { File, Paths } from "expo-file-system";
+import { Platform } from "react-native";
+import { requireNativeModule } from "expo-modules-core";
 
 // ── Types ──
 
@@ -142,27 +144,38 @@ export function loadToday(): {
 
 /** Start a new wasting session right now */
 export function startWasting(): void {
+  startWastingAt(Date.now());
+}
+
+/** Start a new wasting session at a specific timestamp (e.g. from widget) */
+export function startWastingAt(startMs: number): void {
   const data = readData();
-  const today = todayKey();
-  const day = getOrCreateDay(data, today);
+  const startDate = new Date(startMs);
+  const dateKey = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, "0")}-${String(startDate.getDate()).padStart(2, "0")}`;
+  const day = getOrCreateDay(data, dateKey);
 
   // Safety: close any lingering open session
   for (const d of data.days) {
     for (const s of d.sessions) {
-      if (s.end === null) s.end = Date.now();
+      if (s.end === null) s.end = startMs;
     }
   }
 
-  day.sessions.push({ start: Date.now(), end: null });
+  day.sessions.push({ start: startMs, end: null });
   writeData(data);
 }
 
 /** Stop the current wasting session */
 export function stopWasting(): void {
+  stopWastingAt(Date.now());
+}
+
+/** Stop the current wasting session at a specific timestamp (e.g. from widget) */
+export function stopWastingAt(stopMs: number): void {
   const data = readData();
   const open = findOpenSession(data);
   if (open) {
-    open.session.end = Date.now();
+    open.session.end = stopMs;
     writeData(data);
   }
 }
@@ -287,6 +300,78 @@ export function checkAndStopAtBedTime(bedTimeMinutes: number): boolean {
   }
 
   return false;
+}
+
+/** Get the start timestamp of the current running session, or 0 if not wasting */
+export function getRunningSessionStart(): number {
+  const data = readData();
+  const open = findOpenSession(data);
+  return open ? open.session.start : 0;
+}
+
+/** Get today's completed minutes (excluding any running session) */
+export function getTodayCompletedMinutes(): number {
+  const data = readData();
+  const today = todayKey();
+  const day = data.days.find((d) => d.date === today);
+  if (!day) return 0;
+  return Math.max(0, Math.floor((completedMs(day) + adjustmentMs(day)) / 60_000));
+}
+
+/** Get the native widget module. Returns null on Android / Expo Go. */
+function getWidgetModule(): any {
+  if (Platform.OS !== "ios") return null;
+  try {
+    return requireNativeModule("ReactNativeWidgetExtension");
+  } catch {
+    return null;
+  }
+}
+
+/** Push current state to the widget via native bridge. No-op on Android / Expo Go. */
+export function pushWidgetData(
+  todayMinutes: number,
+  isWasting: boolean,
+  sessionStartMs: number,
+  sevenDayAverageMinutes: number,
+): void {
+  const mod = getWidgetModule();
+  if (!mod) return;
+  try {
+    mod.setWidgetData(todayMinutes, isWasting, sessionStartMs, sevenDayAverageMinutes);
+    mod.reloadWidgets();
+  } catch {
+    // Not available
+  }
+}
+
+/** Read and process any pending widget action (start/stop from widget toggle). */
+export function consumePendingWidgetAction(): void {
+  const mod = getWidgetModule();
+  if (!mod) return;
+  try {
+    const action: string | null = mod.getPendingWidgetAction();
+    if (!action) return;
+
+    if (action === "start") {
+      const widgetStartMs: number = mod.getPendingActionSessionStartMs() || Date.now();
+      startWastingAt(widgetStartMs);
+    } else if (action === "stop") {
+      const widgetStartMs: number = mod.getPendingActionSessionStartMs();
+      const widgetStopMs: number = mod.getPendingActionSessionStopMs() || Date.now();
+
+      const { isWasting: hasOpenSession } = loadToday();
+      if (hasOpenSession) {
+        stopWastingAt(widgetStopMs);
+      } else if (widgetStartMs > 0) {
+        startWastingAt(widgetStartMs);
+        stopWastingAt(widgetStopMs);
+      }
+    }
+
+    mod.clearPendingWidgetAction();
+  } catch (e) {
+  }
 }
 
 /** Get the earliest logged date string ("YYYY-MM-DD"), or null if no data */

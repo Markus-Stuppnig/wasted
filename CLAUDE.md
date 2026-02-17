@@ -12,15 +12,34 @@ A privacy-first screen time awareness app for iOS and Android. Users manually tr
 ## Project Structure
 
 ```
-app/
-├── _layout.tsx              # Root layout — wraps everything in GestureHandlerRootView, sets StatusBar light
-├── storage.ts               # Session data persistence (wasted-data.json)
-├── settings-storage.ts      # Settings persistence (wasted-settings.json)
+app/                             # Only route files live here (expo-router)
+├── _layout.tsx                  # Root layout — GestureHandlerRootView, StatusBar
+├── onboarding.tsx               # Onboarding flow overlay
+├── Background.tsx               # Full-screen background image wrapper
 └── (tabs)/
-    ├── _layout.tsx          # Tab navigation — uses NativeTabs on iOS, Tabs with Ionicons on Android
-    ├── index.tsx            # Home screen — timer with swipe-to-track pill
-    ├── calendar.tsx         # Calendar screen — monthly grid with circular progress rings
-    └── menu.tsx             # Settings screen — bed time slider, analytics toggle, info modal
+    ├── _layout.tsx              # Tab navigation — NativeTabs on iOS, custom pill bar elsewhere
+    ├── index.tsx                # Home screen — timer with swipe-to-track pill
+    ├── calendar.tsx             # Calendar screen — monthly grid with circular progress rings
+    └── menu.tsx                 # Settings screen — bed time slider, analytics toggle, info modal
+components/
+├── GlassView.tsx                # BlurView wrapper (platform-specific tint)
+└── Text.tsx                     # Custom Text with Instrument Sans font mapping
+lib/
+├── storage.ts                   # Session data persistence (wasted-data.json)
+├── settings-storage.ts          # Settings persistence (wasted-settings.json)
+├── config.json                  # App configuration (accent color, onboarding screens)
+└── utils/
+    └── sound-manager.ts         # Sound effects via expo-audio
+widgets/
+├── WastedWidget.swift           # Small & medium iOS home screen widgets
+├── WastedWidgetBundle.swift     # Widget bundle entry point
+├── WastedAppIntents.swift       # App intents for widget configuration & actions
+├── Attributes.swift             # Live Activity attributes
+├── Module.swift                 # Widget extension module
+└── Info.plist                   # Widget extension config
+docs/
+├── lean-canvas.pdf              # Lean Canvas business model
+└── pitch-deck.pdf               # Pitch deck presentation
 ```
 
 ## Screens
@@ -50,7 +69,7 @@ Settings and info screen. Cards for:
 
 ## Data Layer
 
-### Session Storage (`app/storage.ts`)
+### Session Storage (`lib/storage.ts`)
 Stores data in `Paths.document/wasted-data.json`. Schema:
 
 ```typescript
@@ -78,7 +97,7 @@ Key behaviors:
 - **Clamped to 0–1440 minutes** per day
 - Public API: `loadToday()`, `startWasting()`, `stopWasting()`, `adjustMinutes()`, `getDayMinutes()`, `get7dAverage()`, `getAllDays()`, `getFirstLogDate()`
 
-### Settings Storage (`app/settings-storage.ts`)
+### Settings Storage (`lib/settings-storage.ts`)
 Stores data in `Paths.document/wasted-settings.json`. Schema:
 
 ```typescript
@@ -125,6 +144,7 @@ docker-compose up -d --build   # Expo dev server with ngrok tunnel on port 8081
 | `react-native-svg` | Calendar progress rings |
 | `@react-native-community/slider` | Bed time slider |
 | `@expo/vector-icons` (Ionicons) | Icons throughout |
+| `expo-audio` | Sound effects (onboarding) |
 | `react-native-safe-area-context` | Safe area insets |
 
 ## Conventions

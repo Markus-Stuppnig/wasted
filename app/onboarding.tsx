@@ -7,8 +7,8 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
-import { playWordPop, playTransition, playComplete } from "./utils/sound-manager";
-import appConfig from "./config.json";
+import { playWordPop, playTransition, playComplete } from "../lib/utils/sound-manager";
+import appConfig from "../lib/config.json";
 
 const BG_COLOR = "#fff";
 const WORD_STAGGER = 200;

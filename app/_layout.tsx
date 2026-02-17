@@ -12,11 +12,11 @@ import {
   InstrumentSans_600SemiBold,
   InstrumentSans_700Bold,
 } from "@expo-google-fonts/instrument-sans";
-import { loadSettings, saveSettings } from "./settings-storage";
-import { checkAndStopAtBedTime } from "./storage";
+import { loadSettings, saveSettings } from "../lib/settings-storage";
+import { checkAndStopAtBedTime } from "../lib/storage";
 import Onboarding from "./onboarding";
 import { backgroundSource } from "./Background";
-import { initializeSounds } from "./utils/sound-manager";
+import { initializeSounds } from "../lib/utils/sound-manager";
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({

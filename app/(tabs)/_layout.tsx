@@ -9,7 +9,7 @@ import {
 import { Tabs } from "expo-router";
 import { NativeTabs, Icon, Label } from "expo-router/unstable-native-tabs";
 import { Ionicons } from "@expo/vector-icons";
-import { BlurView } from "expo-blur";
+import { GlassView } from "../../components/GlassView";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 
@@ -44,7 +44,7 @@ function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   return (
     <View style={[styles.tabBarOuter, { bottom: Math.max(insets.bottom, 12) }]}>
       <View style={styles.tabBarPill}>
-        <BlurView
+        <GlassView
           tint="systemUltraThinMaterialDark"
           intensity={30}
           style={StyleSheet.absoluteFill}

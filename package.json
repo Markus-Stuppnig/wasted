@@ -14,7 +14,7 @@
     "@types/react": "~19.1.10",
     "babel-preset-expo": "^54.0.10",
     "expo": "~54.0.33",
-    "expo-av": "~16.0.8",
+    "expo-audio": "~1.1.1",
     "expo-blur": "~15.0.8",
     "expo-constants": "~18.0.13",
     "expo-file-system": "~19.0.21",
@@ -34,6 +34,7 @@
     "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "~4.16.0",
     "react-native-svg": "15.12.1",
+    "react-native-widget-extension": "^0.2.0",
     "tailwindcss": "^3.4.19",
     "typescript": "~5.9.2"
   },

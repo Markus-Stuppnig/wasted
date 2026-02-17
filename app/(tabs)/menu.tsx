@@ -11,16 +11,16 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Slider from "@react-native-community/slider";
-import { BlurView } from "expo-blur";
+import { GlassView } from "../../components/GlassView";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { Text } from "../components/Text";
+import { Text } from "../../components/Text";
 import {
   loadSettings,
   saveSettings,
   formatBedTime,
   type Settings,
-} from "../settings-storage";
+} from "../../lib/settings-storage";
 import Background from "../Background";
 
 /** Animated inline tooltip component */
@@ -169,7 +169,7 @@ export default function SettingsScreen() {
       >
         {/* ── Bed Time ── */}
         <View className="rounded-card overflow-hidden">
-          <BlurView
+          <GlassView
             className="p-5"
             tint="systemUltraThinMaterialDark"
             intensity={30}
@@ -228,12 +228,12 @@ export default function SettingsScreen() {
               The timer will automatically stop tracking at your bed time.
               This prevents overnight sessions from inflating your data.
             </InlineTooltip>
-          </BlurView>
+          </GlassView>
         </View>
 
         {/* ── Analytics ── */}
         <View className="rounded-card overflow-hidden">
-          <BlurView
+          <GlassView
             className="p-5"
             tint="systemUltraThinMaterialDark"
             intensity={30}
@@ -283,12 +283,12 @@ export default function SettingsScreen() {
               durations, and crash reports. No personal information,
               no tracking IDs, no data sold to third parties. Ever.
             </InlineTooltip>
-          </BlurView>
+          </GlassView>
         </View>
 
         {/* ── What's Wasted? card ── */}
         <View className="rounded-card overflow-hidden">
-          <BlurView
+          <GlassView
             className="p-5"
             tint="systemUltraThinMaterialDark"
             intensity={30}
@@ -335,7 +335,7 @@ export default function SettingsScreen() {
                 </View>
               </View>
             </View>
-          </BlurView>
+          </GlassView>
         </View>
 
         {/* ── Widgets info ── */}
@@ -343,7 +343,7 @@ export default function SettingsScreen() {
           className="rounded-card overflow-hidden"
           onPress={() => Linking.openURL("https://support.apple.com/en-us/118610")}
         >
-          <BlurView
+          <GlassView
             className="p-5"
             tint="systemUltraThinMaterialDark"
             intensity={30}
@@ -368,12 +368,12 @@ export default function SettingsScreen() {
                 color="rgba(255,255,255,0.35)"
               />
             </View>
-          </BlurView>
+          </GlassView>
         </Pressable>
 
         {/* ── Privacy ── */}
         <View className="rounded-card overflow-hidden">
-          <BlurView
+          <GlassView
             className="p-5"
             tint="systemUltraThinMaterialDark"
             intensity={30}
@@ -410,12 +410,12 @@ export default function SettingsScreen() {
                 color="rgba(255,255,255,0.5)"
               />
             </Pressable>
-          </BlurView>
+          </GlassView>
         </View>
 
         {/* ── Legal Notice ── */}
         <View className="rounded-card overflow-hidden">
-          <BlurView
+          <GlassView
             className="p-5"
             tint="systemUltraThinMaterialDark"
             intensity={30}
@@ -442,7 +442,7 @@ export default function SettingsScreen() {
             <Text className="text-xs font-semibold text-white-40 mt-3 leading-[19px]">
               Free app, no registered business.
             </Text>
-          </BlurView>
+          </GlassView>
         </View>
       </ScrollView>
     </Background>

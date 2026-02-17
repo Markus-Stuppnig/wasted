@@ -8,11 +8,11 @@ import {
   AppState,
   type AppStateStatus,
 } from "react-native";
-import { BlurView } from "expo-blur";
+import { GlassView } from "../../components/GlassView";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Text } from "../components/Text";
+import { Text } from "../../components/Text";
 
 const AnimatedText = Animated.createAnimatedComponent(Text);
 import {
@@ -31,8 +31,12 @@ import {
   adjustMinutes,
   get7dAverage,
   checkAndStopAtBedTime,
-} from "../storage";
-import { loadSettings } from "../settings-storage";
+  pushWidgetData,
+  getRunningSessionStart,
+  getTodayCompletedMinutes,
+  consumePendingWidgetAction,
+} from "../../lib/storage";
+import { loadSettings } from "../../lib/settings-storage";
 import Background from "../Background";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -61,6 +65,9 @@ export default function HomeScreen() {
 
   // ── Load persisted data on mount & app foreground ──
   const refresh = useCallback(() => {
+    // Consume any pending widget toggle actions first
+    consumePendingWidgetAction();
+
     // Auto-stop if bed time passed while app was backgrounded
     const settings = loadSettings();
     checkAndStopAtBedTime(settings.bedTimeMinutes);
@@ -75,6 +82,14 @@ export default function HomeScreen() {
     const { averageMs: avg } = get7dAverage(settings.firstOpenedAt);
     setAverageMs(avg);
     setLoaded(true);
+
+    // Push latest state to widget
+    pushWidgetData(
+      getTodayCompletedMinutes(),
+      iw,
+      getRunningSessionStart(),
+      avg !== null ? Math.floor(avg / 60_000) : 0,
+    );
   }, []);
 
   useEffect(() => {
@@ -115,6 +130,12 @@ export default function HomeScreen() {
         const { firstOpenedAt } = loadSettings();
         const { averageMs: avg } = get7dAverage(firstOpenedAt);
         setAverageMs(avg);
+        pushWidgetData(
+          getTodayCompletedMinutes(),
+          false,
+          0,
+          avg !== null ? Math.floor(avg / 60_000) : 0,
+        );
         return;
       }
       const { wastedMs: wms } = loadToday();
@@ -266,6 +287,14 @@ export default function HomeScreen() {
         startWasting();
         const { wastedMs: wms } = loadToday();
         setWastedMs(wms);
+        const { firstOpenedAt } = loadSettings();
+        const { averageMs: avg } = get7dAverage(firstOpenedAt);
+        pushWidgetData(
+          getTodayCompletedMinutes(),
+          true,
+          getRunningSessionStart(),
+          avg !== null ? Math.floor(avg / 60_000) : 0,
+        );
       } else if (!wasting && wasWasting) {
         stopWasting();
         const { wastedMs: wms } = loadToday();
@@ -273,6 +302,12 @@ export default function HomeScreen() {
         const { firstOpenedAt } = loadSettings();
         const { averageMs: avg } = get7dAverage(firstOpenedAt);
         setAverageMs(avg);
+        pushWidgetData(
+          getTodayCompletedMinutes(),
+          false,
+          0,
+          avg !== null ? Math.floor(avg / 60_000) : 0,
+        );
       }
     },
     [pillY, dragY],
@@ -310,8 +345,16 @@ export default function HomeScreen() {
   const handleAdjust = (delta: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     adjustMinutes(delta);
-    const { wastedMs: wms } = loadToday();
+    const { wastedMs: wms, isWasting: iw } = loadToday();
     setWastedMs(wms);
+    const { firstOpenedAt } = loadSettings();
+    const { averageMs: avg } = get7dAverage(firstOpenedAt);
+    pushWidgetData(
+      getTodayCompletedMinutes(),
+      iw,
+      getRunningSessionStart(),
+      avg !== null ? Math.floor(avg / 60_000) : 0,
+    );
   };
 
   // Sync pill position when loaded with active session
@@ -348,24 +391,24 @@ export default function HomeScreen() {
         <View className="flex-row justify-between w-full px-8 mb-7">
           <Pressable onPress={() => handleAdjust(-5)}>
             <View style={{ width: 76, height: 76, borderRadius: 24, overflow: "hidden" }}>
-              <BlurView
+              <GlassView
                 className="flex-1 items-center justify-center"
                 tint="systemUltraThinMaterialDark"
                 intensity={30}
               >
                 <Text className="text-xl font-extrabold text-white-65">{"\u2013"}5m</Text>
-              </BlurView>
+              </GlassView>
             </View>
           </Pressable>
           <Pressable onPress={() => handleAdjust(5)}>
             <View style={{ width: 76, height: 76, borderRadius: 24, overflow: "hidden" }}>
-              <BlurView
+              <GlassView
                 className="flex-1 items-center justify-center"
                 tint="systemUltraThinMaterialDark"
                 intensity={30}
               >
                 <Text className="text-xl font-extrabold text-white-65">+5m</Text>
-              </BlurView>
+              </GlassView>
             </View>
           </Pressable>
         </View>
@@ -379,13 +422,15 @@ export default function HomeScreen() {
             <Animated.View
               className="flex-1 rounded-card-lg"
               style={{
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.18)",
                 shadowColor: isWasting ? "#8ab4f8" : "transparent",
                 shadowOffset: { width: 0, height: 0 },
                 shadowOpacity: 0.5,
                 shadowRadius: 20,
               }}
             >
-              <BlurView
+              <GlassView
                 className="flex-1 rounded-card-lg items-center justify-center overflow-hidden"
                 tint="systemUltraThinMaterialDark"
                 intensity={30}
@@ -436,30 +481,38 @@ export default function HomeScreen() {
                       }) => setPillHeight(e.nativeEvent.layout.height)}
                       style={{ transform: [{ translateY: clampedPillY }] }}
                     >
-                      <BlurView
-                        className="rounded-card px-10 py-[28px] items-center justify-center w-full overflow-hidden"
-                        tint="systemThinMaterialDark"
-                        intensity={50}
+                      <View
+                        className="rounded-card w-full overflow-hidden"
+                        style={{
+                          borderWidth: 1,
+                          borderColor: "rgba(255,255,255,0.25)",
+                        }}
                       >
-                        <View className="items-center justify-center">
-                          <AnimatedText
-                            className="text-lg-plus font-extrabold text-white"
-                            style={{ opacity: livingOpacity }}
-                          >
-                            Living
-                          </AnimatedText>
-                          <AnimatedText
-                            className="text-lg-plus font-extrabold text-white absolute"
-                            style={{ opacity: wastingOpacity }}
-                          >
-                            Wasting
-                          </AnimatedText>
-                        </View>
-                      </BlurView>
+                        <GlassView
+                          className="px-10 py-[28px] items-center justify-center w-full"
+                          tint="systemThinMaterialDark"
+                          intensity={50}
+                        >
+                          <View className="items-center justify-center">
+                            <AnimatedText
+                              className="text-lg-plus font-extrabold text-white"
+                              style={{ opacity: livingOpacity }}
+                            >
+                              Living
+                            </AnimatedText>
+                            <AnimatedText
+                              className="text-lg-plus font-extrabold text-white absolute"
+                              style={{ opacity: wastingOpacity }}
+                            >
+                              Wasting
+                            </AnimatedText>
+                          </View>
+                        </GlassView>
+                      </View>
                     </Animated.View>
                   </PanGestureHandler>
                 </Animated.View>
-              </BlurView>
+              </GlassView>
             </Animated.View>
           </TapGestureHandler>
         </View>
